@@ -1,0 +1,41 @@
+schema: spec-driven
+
+context: |
+  Existing project context:
+  - This is an infinite canvas web app, not a greenfield project.
+  - Tech stack: React 19, TypeScript 5, Vite 7, ESLint 9.
+  - Testing stack: Vitest for unit tests and Playwright for end-to-end flows.
+  - Package manager: pnpm.
+  - Source layout is feature-oriented and should generally stay stable:
+    - src/canvas: stage rendering and canvas presentation
+    - src/geometry: transform and geometry helpers
+    - src/interaction: pointer interaction and hit testing
+    - src/persistence: local document persistence
+    - src/state: store, mutations, undo/redo history
+    - src/types: shared canvas document types
+    - src/utils: small generic helpers
+  - Current app behavior already includes shape editing, selection, pan/zoom, undo/redo, and local save/load.
+  - User-facing UI copy may be Chinese; do not rewrite existing copy language unless the change explicitly requires it.
+  - Prefer incremental changes that preserve current architecture over broad rewrites.
+  - Reuse existing modules and data structures before introducing new abstractions.
+  - Keep browser behavior in mind: pointer interactions, keyboard shortcuts, wheel zoom behavior, and local persistence are core product concerns.
+  - When proposing changes, call out impact on rendering, interaction model, document schema, persistence compatibility, and undo/redo semantics if relevant.
+
+rules:
+  proposal:
+    - Describe the current limitation in the existing app before proposing the change.
+    - Keep scope narrow and incremental; avoid bundling unrelated product ideas into one change.
+    - Include explicit user-visible impact and any migration or backward-compatibility concern.
+    - State non-goals when a change could otherwise expand into canvas engine redesign.
+  design:
+    - Reference the concrete modules likely to change under src/ and explain why each one is involved.
+    - Explain data flow and state transitions when the change affects interaction, history, or persistence.
+    - Call out document model changes explicitly, including whether saved local documents remain compatible.
+    - Prefer extending existing store/types/helpers over adding parallel systems.
+    - Mention test strategy for both unit coverage and end-to-end behavior when applicable.
+  tasks:
+    - Break work into small, reviewable steps that can be implemented incrementally in the existing codebase.
+    - Include code changes, tests, and any spec or documentation updates needed to finish the change.
+    - Name the files or modules likely involved when known.
+    - Add explicit validation steps using pnpm test, pnpm test:e2e, pnpm lint, or pnpm build as appropriate.
+    - Avoid vague tasks such as "refactor canvas system"; describe the concrete behavior to implement or verify.
