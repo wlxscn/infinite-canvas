@@ -1,0 +1,18 @@
+{
+  "name": "@infinite-canvas/agent-api",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.mjs",
+    "build": "node scripts/verify.mjs",
+    "lint": "node scripts/verify.mjs",
+    "start": "node src/server.mjs"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.1.39",
+    "@langchain/langgraph": "^1.2.8",
+    "ai": "^6.0.158",
+    "zod": "^4.3.6"
+  }
+}

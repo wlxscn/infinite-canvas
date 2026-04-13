@@ -1,0 +1,17 @@
+{
+  "name": "@infinite-canvas/shared",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./chat": "./src/chat.ts",
+    "./canvas-context": "./src/canvas-context.ts",
+    "./tool-effects": "./src/tool-effects.ts",
+    "./api": "./src/api.ts",
+    "./runtime": "./src/runtime.mjs"
+  },
+  "scripts": {
+    "build": "node -e \"console.log('shared package is types-only for now')\"",
+    "lint": "node -e \"console.log('shared package lint placeholder')\""
+  }
+}
