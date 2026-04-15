@@ -70,10 +70,23 @@ body {
   overflow: hidden;
   border: 0;
   border-radius: 0;
+  --canvas-ruler-size: 28px;
   background:
     radial-gradient(circle at top, rgba(255, 255, 255, 0.85), transparent 24%),
     linear-gradient(180deg, #f9f5ec 0%, #f2ece1 100%);
   min-height: 100%;
+}
+
+.canvas-stage-content {
+  position: absolute;
+  top: var(--canvas-ruler-size);
+  left: var(--canvas-ruler-size);
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.85), transparent 24%),
+    linear-gradient(180deg, #f9f5ec 0%, #f2ece1 100%);
 }
 
 .canvas-surface {
@@ -81,6 +94,118 @@ body {
   width: 100%;
   height: 100%;
   touch-action: none;
+}
+
+.canvas-ruler-corner,
+.canvas-ruler {
+  position: absolute;
+  background: rgba(255, 250, 242, 0.94);
+  border-color: rgba(138, 108, 57, 0.16);
+}
+
+.canvas-ruler-corner {
+  top: 0;
+  left: 0;
+  width: var(--canvas-ruler-size);
+  height: var(--canvas-ruler-size);
+  border-right: 1px solid rgba(138, 108, 57, 0.16);
+  border-bottom: 1px solid rgba(138, 108, 57, 0.16);
+  background:
+    linear-gradient(135deg, rgba(247, 203, 119, 0.18), rgba(255, 250, 242, 0.96));
+  z-index: 2;
+}
+
+.canvas-ruler {
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 2;
+}
+
+.canvas-ruler-top {
+  top: 0;
+  left: var(--canvas-ruler-size);
+  right: 0;
+  height: var(--canvas-ruler-size);
+  border-bottom: 1px solid rgba(138, 108, 57, 0.16);
+}
+
+.canvas-ruler-left {
+  top: var(--canvas-ruler-size);
+  left: 0;
+  bottom: 0;
+  width: var(--canvas-ruler-size);
+  border-right: 1px solid rgba(138, 108, 57, 0.16);
+}
+
+.canvas-ruler-major,
+.canvas-ruler-tick,
+.canvas-ruler-range {
+  position: absolute;
+}
+
+.canvas-ruler-major {
+  top: 0;
+  bottom: 0;
+  width: 0;
+}
+
+.canvas-ruler-major-vertical {
+  left: 0;
+  right: 0;
+  height: 0;
+}
+
+.canvas-ruler-tick {
+  bottom: 0;
+  width: 1px;
+  height: 11px;
+  background: rgba(138, 108, 57, 0.65);
+}
+
+.canvas-ruler-tick-minor {
+  height: 7px;
+  background: rgba(138, 108, 57, 0.34);
+}
+
+.canvas-ruler-tick-vertical {
+  left: auto;
+  right: 0;
+  bottom: auto;
+  width: 11px;
+  height: 1px;
+}
+
+.canvas-ruler-label {
+  position: absolute;
+  left: 4px;
+  bottom: 12px;
+  font-size: 10px;
+  line-height: 1;
+  color: rgba(138, 108, 57, 0.92);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.canvas-ruler-major-vertical .canvas-ruler-label {
+  left: 3px;
+  bottom: auto;
+  top: -2px;
+  transform: rotate(-90deg) translateX(-100%);
+  transform-origin: top left;
+}
+
+.canvas-ruler-range {
+  background: rgba(247, 203, 119, 0.28);
+}
+
+.canvas-ruler-range-x {
+  top: 0;
+  bottom: 0;
+}
+
+.canvas-ruler-range-y {
+  left: 0;
+  right: 0;
 }
 
 .video-overlay-layer {

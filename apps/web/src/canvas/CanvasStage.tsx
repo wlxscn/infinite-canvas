@@ -16,9 +16,12 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { VideoOverlayLayer } from './VideoOverlayLayer';
+import { useCanvasRulerModel, type CanvasRulerAxisModel } from '../hooks/useCanvasRulerModel';
 import { createId } from '../utils/id';
 import type { CanvasProject, Point, Tool } from '../types/canvas';
 import { getNodeById, upsertNode } from '../state/store';
+
+const RULER_SIZE = 28;
 
 interface CanvasStageProps {
   project: CanvasProject;
@@ -30,6 +33,55 @@ interface CanvasStageProps {
   onReplaceProject: (project: CanvasProject) => void;
   onCommitProject: (project: CanvasProject) => void;
   onFinalizeMutation: (beforeProject: CanvasProject, afterProject: CanvasProject) => void;
+}
+
+interface CanvasRulerProps {
+  axis: 'horizontal' | 'vertical';
+  model: CanvasRulerAxisModel;
+}
+
+function CanvasRuler({ axis, model }: CanvasRulerProps) {
+  const isHorizontal = axis === 'horizontal';
+
+  return (
+    <div
+      className={isHorizontal ? 'canvas-ruler canvas-ruler-top' : 'canvas-ruler canvas-ruler-left'}
+      aria-label={isHorizontal ? '水平刻度尺' : '垂直刻度尺'}
+      data-major-step={model.majorStep}
+      data-first-value={model.majorTicks[0]?.value ?? ''}
+      data-last-value={model.majorTicks[model.majorTicks.length - 1]?.value ?? ''}
+    >
+      {model.rangeProjection ? (
+        <div
+          className={isHorizontal ? 'canvas-ruler-range canvas-ruler-range-x' : 'canvas-ruler-range canvas-ruler-range-y'}
+          style={
+            isHorizontal
+              ? { left: model.rangeProjection.start, width: model.rangeProjection.size }
+              : { top: model.rangeProjection.start, height: model.rangeProjection.size }
+          }
+        />
+      ) : null}
+
+      {model.minorTicks.map((tick) => (
+        <div
+          key={tick.key}
+          className={isHorizontal ? 'canvas-ruler-tick canvas-ruler-tick-minor' : 'canvas-ruler-tick canvas-ruler-tick-minor canvas-ruler-tick-vertical'}
+          style={isHorizontal ? { left: tick.position } : { top: tick.position }}
+        />
+      ))}
+
+      {model.majorTicks.map((tick) => (
+        <div
+          key={tick.key}
+          className={isHorizontal ? 'canvas-ruler-major' : 'canvas-ruler-major canvas-ruler-major-vertical'}
+          style={isHorizontal ? { left: tick.position } : { top: tick.position }}
+        >
+          <div className={isHorizontal ? 'canvas-ruler-tick' : 'canvas-ruler-tick canvas-ruler-tick-vertical'} />
+          <span className="canvas-ruler-label">{tick.label}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function CanvasStage({
@@ -55,6 +107,7 @@ export function CanvasStage({
   const onCommitProjectRef = useRef(onCommitProject);
   const onFinalizeMutationRef = useRef(onFinalizeMutation);
   const [interactionState, setInteractionState] = useState(createInitialInteractionState());
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   const renderProjectNow = useCallback(
     (nextProject: CanvasProject, selectedNodeId: string | null, state: DraftState): void => {
@@ -162,7 +215,17 @@ export function CanvasStage({
       return;
     }
 
+    const updateContainerSize = () => {
+      setContainerSize({
+        width: container.clientWidth,
+        height: container.clientHeight,
+      });
+    };
+
+    updateContainerSize();
+
     const observer = new ResizeObserver(() => {
+      updateContainerSize();
       controllerRef.current?.handleResize();
     });
 
@@ -171,6 +234,15 @@ export function CanvasStage({
   }, []);
 
   const cursor = useMemo(() => getCanvasCursor(interactionState, tool, isSpacePressed), [interactionState, isSpacePressed, tool]);
+  const selectedNode = useMemo(() => getNodeById(project.board.nodes, selectedId), [project.board.nodes, selectedId]);
+  const contentWidth = Math.max(0, containerSize.width - RULER_SIZE);
+  const contentHeight = Math.max(0, containerSize.height - RULER_SIZE);
+  const rulerModel = useCanvasRulerModel({
+    viewport: project.board.viewport,
+    contentWidth,
+    contentHeight,
+    selectedNode,
+  });
 
   const getEventPoint = useCallback(
     (event: Pick<PointerEvent, 'clientX' | 'clientY'> | Pick<WheelEvent, 'clientX' | 'clientY'>): Point => {
@@ -230,16 +302,21 @@ export function CanvasStage({
 
   return (
     <div className="canvas-stage" ref={containerRef}>
-      <canvas
-        ref={canvasRef}
-        className="canvas-surface"
-        style={{ cursor }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
-      />
-      <VideoOverlayLayer board={project.board} assets={project.assets} selectedId={selectedId} />
+      <div className="canvas-ruler-corner" aria-hidden="true" />
+      <CanvasRuler axis="horizontal" model={rulerModel.horizontal} />
+      <CanvasRuler axis="vertical" model={rulerModel.vertical} />
+      <div className="canvas-stage-content">
+        <canvas
+          ref={canvasRef}
+          className="canvas-surface"
+          style={{ cursor }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+        />
+        <VideoOverlayLayer board={project.board} assets={project.assets} selectedId={selectedId} />
+      </div>
     </div>
   );
 }

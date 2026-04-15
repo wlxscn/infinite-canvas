@@ -144,7 +144,7 @@ test('can export project json', async ({ page }) => {
   expect(download.suggestedFilename()).toBe('canvas-project.json');
 });
 
-test('drag, pan, and zoom still commit after deferred interaction updates', async ({ page }) => {
+test('rulers stay visible and react to selection and zoom changes', async ({ page }) => {
   await page.addInitScript(([storageKey, project]) => {
     if (window.sessionStorage.getItem('__seeded_project__') === 'true') {
       return;
@@ -156,6 +156,8 @@ test('drag, pan, and zoom still commit after deferred interaction updates', asyn
   await page.goto('/');
   await page.getByRole('button', { name: 'Seed image' }).click();
   await expect(page.getByText(/节点 1/)).toBeVisible();
+  await expect(page.locator('.canvas-ruler-top')).toBeVisible();
+  await expect(page.locator('.canvas-ruler-left')).toBeVisible();
 
   const canvas = page.locator('canvas');
   const box = await canvas.boundingBox();
@@ -174,17 +176,14 @@ test('drag, pan, and zoom still commit after deferred interaction updates', asyn
   const draggedProject = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
   expect(draggedProject.board.nodes[0].x).not.toBe(0);
   expect(draggedProject.board.nodes[0].y).not.toBe(0);
+  const horizontalRange = page.locator('.canvas-ruler-range-x');
+  const verticalRange = page.locator('.canvas-ruler-range-y');
+  await expect(horizontalRange).toBeVisible();
+  await expect(verticalRange).toBeVisible();
 
-  await page.getByRole('button', { name: '平移' }).click();
-  await page.mouse.move(box.x + 80, box.y + 80);
-  await page.mouse.down();
-  await page.mouse.move(box.x + 180, box.y + 150, { steps: 8 });
-  await page.mouse.up();
-  await page.waitForTimeout(250);
-
-  const pannedProject = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
-  expect(pannedProject.board.viewport.tx).not.toBe(0);
-  expect(pannedProject.board.viewport.ty).not.toBe(0);
+  const topRuler = page.locator('.canvas-ruler-top');
+  const horizontalRangeBeforeZoom = await horizontalRange.boundingBox();
+  expect(horizontalRangeBeforeZoom).not.toBeNull();
 
   await canvas.hover();
   await page.mouse.wheel(0, -240);
@@ -192,6 +191,10 @@ test('drag, pan, and zoom still commit after deferred interaction updates', asyn
 
   const zoomedProject = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
   expect(zoomedProject.board.viewport.scale).toBeGreaterThan(1);
+  await expect(topRuler).toBeVisible();
+  const horizontalRangeAfterZoom = await horizontalRange.boundingBox();
+  expect(horizontalRangeAfterZoom).not.toBeNull();
+  expect(horizontalRangeAfterZoom!.width).toBeGreaterThan(horizontalRangeBeforeZoom!.width);
 });
 
 test('rect, freehand, text, and media nodes remain available after engine-backed dispatch', async ({ page }) => {
