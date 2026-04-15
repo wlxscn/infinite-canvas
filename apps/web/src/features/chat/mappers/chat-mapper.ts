@@ -44,11 +44,28 @@ export function toLocalChatMessage(message: AgentUIMessage): ChatMessage {
 }
 
 export function extractAgentResponseData(message: AgentUIMessage): AgentResponseData | null {
-  const dataPart = message.parts.find(
+  const dataParts = message.parts.filter(
     (part): part is Extract<AgentUIMessage['parts'][number], { type: 'data-agentResponse' }> => part.type === 'data-agentResponse',
   );
 
-  return dataPart?.data ?? null;
+  if (dataParts.length === 0) {
+    return null;
+  }
+
+  return dataParts.reduce<AgentResponseData>(
+    (merged, part) => ({
+      suggestions: [...merged.suggestions, ...(part.data?.suggestions ?? [])],
+      effects: [...merged.effects, ...(part.data?.effects ?? [])],
+      conversationId: part.data?.conversationId ?? merged.conversationId,
+      previousResponseId: part.data?.previousResponseId ?? merged.previousResponseId,
+    }),
+    {
+      suggestions: [],
+      effects: [],
+      conversationId: undefined,
+      previousResponseId: undefined,
+    },
+  );
 }
 
 export function buildAgentRequestBody(request: AgentChatRequest) {

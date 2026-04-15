@@ -1,0 +1,21 @@
+{
+  "name": "@infinite-canvas/canvas-engine",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./model": "./src/model.ts",
+    "./contracts": "./src/contracts.ts",
+    "./geometry": "./src/geometry.ts",
+    "./transform": "./src/transform.ts",
+    "./scene": "./src/scene.ts",
+    "./canvas-registry": "./src/canvas-registry.ts",
+    "./registry": "./src/registry.ts",
+    "./runtime": "./src/runtime.ts"
+  },
+  "scripts": {
+    "build": "node -e \"console.log('canvas-engine package is source-exported for now')\"",
+    "lint": "node -e \"console.log('canvas-engine package lint placeholder')\""
+  }
+}

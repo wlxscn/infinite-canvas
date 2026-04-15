@@ -38,23 +38,10 @@ export function createChatController() {
       conversationId: conversationState.conversationId,
       previousResponseId: conversationState.previousResponseId,
     });
-
-    const result = await openAiService.respond({
-      request: body,
-      conversationState,
-      toolRunnerService,
-    });
-
-    logChat('response:ready', {
-      requestId,
-      assistantTextLength: result.assistantMessage.text.length,
-      suggestionCount: result.assistantMessage.suggestions.length,
-      effectCount: result.effects.length,
-    });
+    const textId = `assistant-text-${requestId}`;
 
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
-        const textId = `assistant-text-${conversationState.previousResponseId ?? conversationState.conversationId}`;
         logChat('stream:start', { requestId, textId });
 
         writer.write({
@@ -62,24 +49,39 @@ export function createChatController() {
           id: textId,
         });
 
-        for (const chunk of result.assistantMessage.text.split(/(?<=[,.!?\n。！？])/)) {
-          if (!chunk) {
-            continue;
-          }
+        const prepared = await openAiService.prepareResponse({
+          request: body,
+          conversationState,
+          toolRunnerService,
+        });
 
-          logChat('stream:text-delta', {
-            requestId,
-            textId,
-            deltaLength: chunk.length,
-            preview: chunk.slice(0, 48),
-          });
+        logChat('response:prepared', {
+          requestId,
+          suggestionCount: prepared.suggestions.length,
+          effectCount: prepared.effects.length,
+        });
 
-          writer.write({
-            type: 'text-delta',
-            id: textId,
-            delta: chunk,
-          });
-        }
+        const assistantText = await openAiService.streamPreparedResponse({
+          prepared,
+          onTextDelta(chunk) {
+            if (!chunk) {
+              return;
+            }
+
+            logChat('stream:text-delta', {
+              requestId,
+              textId,
+              deltaLength: chunk.length,
+              preview: chunk.slice(0, 48),
+            });
+
+            writer.write({
+              type: 'text-delta',
+              id: textId,
+              delta: chunk,
+            });
+          },
+        });
 
         writer.write({
           type: 'text-end',
@@ -90,19 +92,59 @@ export function createChatController() {
         writer.write({
           type: 'data-agentResponse',
           data: {
-            suggestions: result.assistantMessage.suggestions,
-            effects: result.effects,
-            conversationId: result.conversationId,
-            previousResponseId: result.previousResponseId,
+            suggestions: prepared.suggestions,
+            effects: prepared.effects,
+            conversationId: prepared.conversationId,
+            previousResponseId: prepared.previousResponseId,
           },
         });
 
         logChat('stream:data-agentResponse', {
           requestId,
-          conversationId: result.conversationId,
-          previousResponseId: result.previousResponseId,
-          suggestionCount: result.assistantMessage.suggestions.length,
-          effectCount: result.effects.length,
+          assistantTextLength: assistantText?.length ?? 0,
+          conversationId: prepared.conversationId,
+          previousResponseId: prepared.previousResponseId,
+          suggestionCount: prepared.suggestions.length,
+          effectCount: prepared.effects.length,
+          durationMs: Date.now() - startedAt,
+        });
+
+        const deferredPrompt = prepared.deferredGenerationEffect?.prompt;
+        if (!deferredPrompt) {
+          return;
+        }
+
+        const mediaType = prepared.deferredGenerationEffect?.mediaType ?? 'image';
+
+        logChat('stream:generation:start', {
+          requestId,
+          mediaType,
+          prompt: deferredPrompt,
+        });
+
+        const generatedEffect =
+          mediaType === 'video'
+            ? await toolRunnerService.generateVideoEffect({
+                prompt: deferredPrompt,
+              })
+            : await toolRunnerService.generateImageEffect({
+                prompt: deferredPrompt,
+              });
+
+        writer.write({
+          type: 'data-agentResponse',
+          data: {
+            suggestions: [],
+            effects: [generatedEffect],
+            conversationId: prepared.conversationId,
+            previousResponseId: prepared.previousResponseId,
+          },
+        });
+
+        logChat('stream:generation:end', {
+          requestId,
+          mediaType,
+          effectType: generatedEffect.type,
           durationMs: Date.now() - startedAt,
         });
       },

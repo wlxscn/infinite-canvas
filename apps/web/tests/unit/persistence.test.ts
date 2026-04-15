@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { loadProject, saveProject, STORAGE_KEY } from '../../src/persistence/local';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createCanvasRenderRuntime } from '@infinite-canvas/canvas-engine';
+import { createDeferredProjectSaver, loadProject, saveProject, STORAGE_KEY } from '../../src/persistence/local';
 import { createEmptyProject } from '../../src/state/store';
 
 describe('project persistence', () => {
@@ -47,6 +48,40 @@ describe('project persistence', () => {
     expect(loaded.chat.sessions).toHaveLength(1);
     expect(loaded.chat.activeSessionId).toBe('session_1');
     expect(loaded.chat.sessions[0].messages[0].text).toBe('ready to help');
+  });
+
+  it('preserves video assets and generation job metadata', () => {
+    const project = createEmptyProject();
+    project.assets.push({
+      id: 'asset_video_1',
+      type: 'video',
+      name: 'motion',
+      mimeType: 'video/mp4',
+      src: 'https://example.com/video.mp4',
+      posterSrc: 'https://example.com/poster.jpg',
+      width: 1920,
+      height: 1080,
+      durationSeconds: 12,
+      origin: 'generated',
+      createdAt: 3,
+      sourceJobId: 'job_1',
+    });
+    project.jobs.push({
+      id: 'job_1',
+      prompt: 'hero motion',
+      mediaType: 'video',
+      status: 'success',
+      createdAt: 3,
+      updatedAt: 4,
+      assetId: 'asset_video_1',
+    });
+
+    saveProject(project);
+
+    const loaded = loadProject();
+    expect(loaded.assets[0].type).toBe('video');
+    expect(loaded.assets[0].posterSrc).toBe('https://example.com/poster.jpg');
+    expect(loaded.jobs[0].mediaType).toBe('video');
   });
 
   it('migrates legacy shape-only data', () => {
@@ -117,6 +152,32 @@ describe('project persistence', () => {
     expect(loaded.chat.sessions[0].previousResponseId).toBe('resp_456');
   });
 
+  it('rebuilds runtime render state from persisted assets without storing engine caches', () => {
+    const project = createEmptyProject();
+    project.assets.push({
+      id: 'asset_image_1',
+      type: 'image',
+      name: 'Poster',
+      mimeType: 'image/png',
+      src: 'data:image/png;base64,abc',
+      width: 800,
+      height: 600,
+      origin: 'upload',
+      createdAt: 5,
+    });
+
+    saveProject(project);
+
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
+    expect(stored.assetMap).toBeUndefined();
+    expect(stored.runtime).toBeUndefined();
+
+    const loaded = loadProject();
+    const runtime = createCanvasRenderRuntime(loaded.assets);
+
+    expect(runtime.assetMap.get('asset_image_1')?.name).toBe('Poster');
+  });
+
   it('does not surface legacy single-thread chat as a session', () => {
     localStorage.setItem(
       STORAGE_KEY,
@@ -148,5 +209,51 @@ describe('project persistence', () => {
     const loaded = loadProject();
     expect(loaded.chat.sessions).toEqual([]);
     expect(loaded.chat.activeSessionId).toBeNull();
+  });
+
+  it('defers automatic saves and only writes the latest scheduled project', () => {
+    vi.useFakeTimers();
+
+    const save = vi.fn();
+    const saver = createDeferredProjectSaver({ delayMs: 100, save });
+    const projectA = createEmptyProject();
+    const projectB = {
+      ...createEmptyProject(),
+      board: {
+        ...createEmptyProject().board,
+        viewport: { tx: 20, ty: 10, scale: 1.2 },
+      },
+    };
+
+    saver.schedule(projectA);
+    saver.schedule(projectB);
+
+    vi.advanceTimersByTime(99);
+    expect(save).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith(projectB);
+
+    vi.useRealTimers();
+  });
+
+  it('can flush a deferred save immediately', () => {
+    vi.useFakeTimers();
+
+    const save = vi.fn();
+    const saver = createDeferredProjectSaver({ delayMs: 100, save });
+    const project = createEmptyProject();
+
+    saver.schedule(project);
+    saver.flush();
+
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith(project);
+
+    vi.advanceTimersByTime(100);
+    expect(save).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
   });
 });

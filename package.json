@@ -7,6 +7,7 @@
     "dev": "pnpm --parallel --filter @infinite-canvas/web --filter @infinite-canvas/agent-api dev",
     "dev:web": "pnpm --filter @infinite-canvas/web dev",
     "dev:api": "pnpm --filter @infinite-canvas/agent-api dev",
+    "dev:browser-use": "node scripts/browser-use-stack.mjs",
     "build": "pnpm --parallel --filter @infinite-canvas/web --filter @infinite-canvas/agent-api build",
     "build:web": "pnpm --filter @infinite-canvas/web build",
     "build:api": "pnpm --filter @infinite-canvas/agent-api build",

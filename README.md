@@ -12,6 +12,7 @@ Monorepo for the canvas editor UI and the agent chat service.
 
 ```bash
 pnpm dev
+pnpm dev:browser-use
 pnpm build
 pnpm lint
 pnpm test
@@ -31,3 +32,4 @@ Copy `.env.example` and configure:
 
 - The legacy root-level frontend copy has been removed.
 - End-to-end tests start the web app and agent API together from `apps/web/scripts/run-e2e.mjs`.
+- `pnpm dev:browser-use` starts the same two-app local stack on stable ports for `browser-use`; see `docs/browser-use.md`.

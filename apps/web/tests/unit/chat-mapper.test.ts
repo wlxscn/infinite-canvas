@@ -28,4 +28,69 @@ describe('chat mapper', () => {
     expect(responseData?.conversationId).toBe('conv_123');
     expect(responseData?.effects).toEqual([{ type: 'insert-text', text: '新的标题' }]);
   });
+
+  it('merges multiple agent response data parts from a single SSE message', () => {
+    const message = {
+      id: 'assistant_2',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: '我先返回文本，图片随后补发。' },
+        {
+          type: 'data-agentResponse',
+          data: {
+            suggestions: [{ id: 's1', label: '更换风格', action: 'change-style' as const }],
+            effects: [],
+            conversationId: 'conv_stream',
+            previousResponseId: 'resp_stream',
+          },
+        },
+        {
+          type: 'data-agentResponse',
+          data: {
+            suggestions: [],
+            effects: [
+              {
+                type: 'insert-image' as const,
+                prompt: 'poster',
+                imageUrl: 'https://example.com/image.jpg',
+                width: 1280,
+                height: 720,
+              },
+              {
+                type: 'insert-video' as const,
+                prompt: 'hero motion',
+                videoUrl: 'https://example.com/video.mp4',
+                width: 1920,
+                height: 1080,
+                durationSeconds: 8,
+              },
+            ],
+            conversationId: 'conv_stream',
+            previousResponseId: 'resp_stream',
+          },
+        },
+      ],
+    };
+
+    const responseData = extractAgentResponseData(message);
+
+    expect(responseData?.suggestions).toHaveLength(1);
+    expect(responseData?.effects).toEqual([
+      {
+        type: 'insert-image',
+        prompt: 'poster',
+        imageUrl: 'https://example.com/image.jpg',
+        width: 1280,
+        height: 720,
+      },
+      {
+        type: 'insert-video',
+        prompt: 'hero motion',
+        videoUrl: 'https://example.com/video.mp4',
+        width: 1920,
+        height: 1080,
+        durationSeconds: 8,
+      },
+    ]);
+  });
 });

@@ -12,6 +12,7 @@
     "test:e2e": "node scripts/run-e2e.mjs"
   },
   "dependencies": {
+    "@infinite-canvas/canvas-engine": "workspace:*",
     "@ai-sdk/react": "^3.0.160",
     "ai": "^6.0.158",
     "react": "^19.2.0",

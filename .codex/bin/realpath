@@ -1,0 +1,5 @@
+#!/bin/sh
+if [ "$1" = "--" ]; then
+  shift
+fi
+python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"

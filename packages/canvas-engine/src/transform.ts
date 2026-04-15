@@ -1,4 +1,4 @@
-import type { Point, Viewport } from '../types/canvas';
+import type { Point, Viewport } from './model';
 
 export const MIN_SCALE = 0.1;
 export const MAX_SCALE = 8;

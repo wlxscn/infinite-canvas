@@ -13,6 +13,10 @@ function logChat(event: string, payload: Record<string, unknown> = {}) {
 
 interface UseAgentChatOptions {
   initialMessages: ChatMessage[];
+  onResponseData?: (options: {
+    responseData: ReturnType<typeof extractAgentResponseData>;
+    targetSessionId: string | null;
+  }) => void;
   onAssistantFinish: (options: {
     message: ChatMessage;
     responseData: ReturnType<typeof extractAgentResponseData>;
@@ -21,8 +25,9 @@ interface UseAgentChatOptions {
   onError?: (error: Error) => void;
 }
 
-export function useAgentChat({ initialMessages, onAssistantFinish, onError }: UseAgentChatOptions) {
+export function useAgentChat({ initialMessages, onResponseData, onAssistantFinish, onError }: UseAgentChatOptions) {
   const pendingTargetSessionIdRef = useRef<string | null>(null);
+  const latestResponseDataRef = useRef<ReturnType<typeof extractAgentResponseData> | null>(null);
   const transport = useMemo(
     () =>
       new DefaultChatTransport<AgentUIMessage>({
@@ -34,12 +39,30 @@ export function useAgentChat({ initialMessages, onAssistantFinish, onError }: Us
   const chat = useChat<AgentUIMessage>({
     messages: initialMessages.map(toUIMessage),
     transport,
+    onData(dataPart) {
+      if (dataPart.type !== 'data-agentResponse') {
+        return;
+      }
+
+      latestResponseDataRef.current = dataPart.data;
+      logChat('transport:data-agentResponse', {
+        suggestionCount: dataPart.data?.suggestions.length ?? 0,
+        effectCount: dataPart.data?.effects.length ?? 0,
+        conversationId: dataPart.data?.conversationId,
+        previousResponseId: dataPart.data?.previousResponseId,
+      });
+
+      onResponseData?.({
+        responseData: dataPart.data,
+        targetSessionId: pendingTargetSessionIdRef.current,
+      });
+    },
     onError(error) {
       logChat('transport:error', { message: error.message });
       onError?.(error);
     },
     onFinish({ message }) {
-      const responseData = extractAgentResponseData(message);
+      const responseData = extractAgentResponseData(message) ?? latestResponseDataRef.current;
       const localMessage = toLocalChatMessage(message);
 
       logChat('transport:finish', {
@@ -57,6 +80,7 @@ export function useAgentChat({ initialMessages, onAssistantFinish, onError }: Us
         responseData,
         targetSessionId: pendingTargetSessionIdRef.current,
       });
+      latestResponseDataRef.current = null;
       pendingTargetSessionIdRef.current = null;
     },
   });

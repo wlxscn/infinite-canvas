@@ -17,6 +17,8 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
+      "@infinite-canvas/canvas-engine": ["../../packages/canvas-engine/src/index.ts"],
+      "@infinite-canvas/canvas-engine/*": ["../../packages/canvas-engine/src/*"],
       "@infinite-canvas/shared/*": ["../../packages/shared/src/*"]
     },
 
@@ -28,5 +30,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src", "../../packages/shared/src"]
+  "include": ["src", "../../packages/shared/src", "../../packages/canvas-engine/src"]
 }

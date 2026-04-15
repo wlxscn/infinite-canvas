@@ -7,6 +7,7 @@
     "dev": "node --watch src/server.mjs",
     "build": "node scripts/verify.mjs",
     "lint": "node scripts/verify.mjs",
+    "test": "node --test \"src/**/*.test.mjs\"",
     "start": "node src/server.mjs"
   },
   "dependencies": {

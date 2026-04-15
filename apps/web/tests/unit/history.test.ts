@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { commitProject, createEmptyProject, createInitialStore, redo, undo } from '../../src/state/store';
+import { commitProject, createEmptyProject, createInitialStore, finalizeMutation, redo, replaceProjectNoHistory, undo } from '../../src/state/store';
 
 describe('history stack', () => {
   it('supports undo and redo for board nodes', () => {
@@ -62,5 +62,50 @@ describe('history stack', () => {
 
     state = redo(state);
     expect(state.project.board.nodes.length).toBe(2);
+  });
+
+  it('records a drag finalize as a single undoable mutation', () => {
+    const base = createEmptyProject();
+    const beforeProject = {
+      ...base,
+      board: {
+        ...base.board,
+        nodes: [
+          {
+            id: 'node_rect_1',
+            type: 'rect' as const,
+            x: 0,
+            y: 0,
+            w: 20,
+            h: 20,
+            stroke: '#000',
+          },
+        ],
+      },
+    };
+    const afterProject = {
+      ...beforeProject,
+      board: {
+        ...beforeProject.board,
+        nodes: [
+          {
+            ...beforeProject.board.nodes[0],
+            x: 120,
+            y: 80,
+          },
+        ],
+      },
+    };
+
+    let state = createInitialStore(beforeProject);
+    state = replaceProjectNoHistory(state, afterProject);
+    state = finalizeMutation(state, beforeProject, afterProject);
+
+    expect(state.past).toHaveLength(1);
+    expect(state.project.board.nodes[0].x).toBe(120);
+
+    state = undo(state);
+    expect(state.project.board.nodes[0].x).toBe(0);
+    expect(state.future).toHaveLength(1);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clampScale, screenToWorld, worldToScreen, zoomAtScreenPoint } from '../../src/geometry/transform';
+import { clampScale, screenToWorld, worldToScreen, zoomAtScreenPoint } from '@infinite-canvas/canvas-engine';
 
 describe('transform', () => {
   it('converts between world and screen coordinates', () => {

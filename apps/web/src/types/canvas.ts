@@ -1,77 +1,31 @@
 import type { ChatMessage } from '@infinite-canvas/shared/chat';
+import type { GenerationMediaType } from '@infinite-canvas/shared/api';
+import type { BoardDoc } from '@infinite-canvas/canvas-engine';
+export type {
+  BoardDoc,
+  CanvasNode,
+  FreehandNode,
+  ImageNode,
+  Point,
+  RectNode,
+  Shape,
+  TextNode,
+  VideoNode,
+  Viewport,
+} from '@infinite-canvas/canvas-engine';
 
 export type Tool = 'select' | 'rect' | 'freehand' | 'text' | 'pan';
 
-export interface Viewport {
-  tx: number;
-  ty: number;
-  scale: number;
-}
-
-export interface Point {
-  x: number;
-  y: number;
-}
-
-export interface RectNode {
-  id: string;
-  type: 'rect';
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  stroke: string;
-  fill?: string;
-}
-
-export interface FreehandNode {
-  id: string;
-  type: 'freehand';
-  points: Point[];
-  stroke: string;
-  width: number;
-}
-
-export interface TextNode {
-  id: string;
-  type: 'text';
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  text: string;
-  color: string;
-  fontSize: number;
-  fontFamily: string;
-}
-
-export interface ImageNode {
-  id: string;
-  type: 'image';
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  assetId: string;
-}
-
-export type CanvasNode = RectNode | FreehandNode | TextNode | ImageNode;
-export type Shape = RectNode | FreehandNode;
-
-export interface BoardDoc {
-  version: 2;
-  viewport: Viewport;
-  nodes: CanvasNode[];
-}
-
 export interface AssetRecord {
   id: string;
-  type: 'image';
+  type: GenerationMediaType;
   name: string;
   mimeType: string;
   src: string;
   width: number;
   height: number;
+  posterSrc?: string | null;
+  durationSeconds?: number;
   origin: 'upload' | 'generated';
   createdAt: number;
   sourceJobId?: string;
@@ -82,6 +36,7 @@ export type GenerationJobStatus = 'pending' | 'success' | 'failed';
 export interface GenerationJob {
   id: string;
   prompt: string;
+  mediaType?: GenerationMediaType;
   status: GenerationJobStatus;
   createdAt: number;
   updatedAt: number;

@@ -144,3 +144,56 @@ export function saveProject(project: CanvasProject): void {
     // Ignore quota/security errors for local-first behavior.
   }
 }
+
+interface DeferredProjectSaverOptions {
+  delayMs?: number;
+  save?: (project: CanvasProject) => void;
+  scheduleTimeout?: typeof globalThis.setTimeout;
+  clearScheduledTimeout?: typeof globalThis.clearTimeout;
+}
+
+export function createDeferredProjectSaver(options: DeferredProjectSaverOptions = {}) {
+  const {
+    delayMs = 160,
+    save = saveProject,
+    scheduleTimeout = globalThis.setTimeout.bind(globalThis),
+    clearScheduledTimeout = globalThis.clearTimeout.bind(globalThis),
+  } = options;
+
+  let timeoutId: ReturnType<typeof globalThis.setTimeout> | null = null;
+  let pendingProject: CanvasProject | null = null;
+
+  function clearTimer(): void {
+    if (timeoutId !== null) {
+      clearScheduledTimeout(timeoutId);
+      timeoutId = null;
+    }
+  }
+
+  return {
+    schedule(project: CanvasProject): void {
+      pendingProject = project;
+      clearTimer();
+      timeoutId = scheduleTimeout(() => {
+        timeoutId = null;
+        const projectToSave = pendingProject;
+        pendingProject = null;
+        if (projectToSave) {
+          save(projectToSave);
+        }
+      }, delayMs);
+    },
+    flush(project?: CanvasProject): void {
+      clearTimer();
+      const projectToSave = project ?? pendingProject;
+      pendingProject = null;
+      if (projectToSave) {
+        save(projectToSave);
+      }
+    },
+    cancel(): void {
+      clearTimer();
+      pendingProject = null;
+    },
+  };
+}
