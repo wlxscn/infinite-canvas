@@ -1,9 +1,12 @@
 import { createServer } from 'node:http';
 import { UI_MESSAGE_STREAM_HEADERS } from 'ai';
 import { getEnv } from './config/env.mjs';
-import { handleAssistantMessageRoute } from './routes/assistant-message.mjs';
 import { handleHealthRoute } from './routes/health.mjs';
 import { handleChatRoute } from './routes/chat.mjs';
+import { handleTranscriptionRoute } from './routes/transcription.mjs';
+import { handleMiniMaxTestRoute } from './routes/minimax-test.mjs';
+import { handleImageGenerationRoute } from './routes/image-generation.mjs';
+import { handleVideoGenerationRoute } from './routes/video-generation.mjs';
 
 export function createApp() {
   return createServer(async (request, response) => {
@@ -42,8 +45,23 @@ export function createApp() {
       return;
     }
 
-    if (request.method === 'POST' && request.url === '/assistant-message') {
-      await handleAssistantMessageRoute(request, response);
+    if (request.method === 'POST' && request.url === '/transcribe') {
+      await handleTranscriptionRoute(request, response);
+      return;
+    }
+
+    if (request.method === 'POST' && request.url === '/minimax-test') {
+      await handleMiniMaxTestRoute(request, response);
+      return;
+    }
+
+    if (request.method === 'POST' && request.url === '/generate-image') {
+      await handleImageGenerationRoute(request, response);
+      return;
+    }
+
+    if (request.method === 'POST' && request.url === '/generate-video') {
+      await handleVideoGenerationRoute(request, response);
       return;
     }
 

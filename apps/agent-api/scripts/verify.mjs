@@ -1,16 +1,25 @@
 await import('../src/app.mjs');
 await import('../src/config/env.mjs');
 await import('../src/controllers/chat.controller.mjs');
+await import('../src/controllers/image-generation.controller.mjs');
+await import('../src/controllers/minimax-test.controller.mjs');
+await import('../src/controllers/transcription.controller.mjs');
+await import('../src/controllers/video-generation.controller.mjs');
 await import('../src/prompts/design-agent.prompt.mjs');
 await import('../src/routes/chat.mjs');
+await import('../src/routes/image-generation.mjs');
+await import('../src/routes/minimax-test.mjs');
 await import('../src/routes/health.mjs');
+await import('../src/routes/transcription.mjs');
+await import('../src/routes/video-generation.mjs');
 await import('../src/services/conversation.service.mjs');
-await import('../src/services/assistant-message.service.mjs');
 await import('../src/services/minimax.service.mjs');
 await import('../src/services/openai.service.mjs');
+await import('../src/services/transcription.service.mjs');
 await import('../src/services/tool-runner.service.mjs');
 await import('../src/tools/add-text.tool.mjs');
 await import('../src/tools/change-style.tool.mjs');
 await import('../src/tools/generate-variant.tool.mjs');
+await import('../src/tools/generate-video.tool.mjs');
 
 console.log('agent-api modules verified');

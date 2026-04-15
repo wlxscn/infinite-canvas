@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { AgentChatRequest, AssistantEventRequest } from '@infinite-canvas/shared/api';
+import type { AgentChatRequest } from '@infinite-canvas/shared/api';
 import type { CanvasContextPayload } from '@infinite-canvas/shared/canvas-context';
-import type { ChatMessage, ChatSuggestion, ChatSuggestionAction } from '@infinite-canvas/shared/chat';
+import type { ChatMessage, ChatSuggestionAction } from '@infinite-canvas/shared/chat';
 import type { AgentEffect } from '@infinite-canvas/shared/tool-effects';
+import { getCanvasNodeBounds, normalizeBounds, screenToWorld, worldToScreen } from '@infinite-canvas/canvas-engine';
 import { CanvasStage } from './canvas/CanvasStage';
-import { getNodeBounds, normalizeBounds } from './canvas/bounds';
-import { worldToScreen } from './geometry/transform';
-import { fetchAssistantEventMessage } from './features/chat/api/chat-client';
+import { generateImage, generateVideo } from './features/chat/api/chat-client';
 import { useAgentChat } from './features/chat/hooks/useAgentChat';
+import { mergeTranscriptIntoDraft, useVoiceComposer } from './features/chat/hooks/useVoiceComposer';
 import { appendMessagesToSession, createChatSession, getActiveChatSession, updateActiveSession, updateSessionById } from './features/chat/session-state';
-import { loadProject, saveProject } from './persistence/local';
+import { createDeferredProjectSaver, loadProject } from './persistence/local';
 import {
   bringNodeForward,
   commitProject,
@@ -31,6 +31,7 @@ import type {
   AssetRecord,
   CanvasProject,
   CanvasStoreState,
+  CanvasNode,
   GenerationJob,
   TextNode,
   Tool,
@@ -54,28 +55,6 @@ function getSelectedNode(state: CanvasStoreState) {
   return getNodeById(state.project.board.nodes, state.selectedId);
 }
 
-function createGeneratedSvg(prompt: string): string {
-  const label = prompt.slice(0, 24) || 'Design';
-  const encoded = encodeURIComponent(`
-    <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
-      <defs>
-        <linearGradient id="bg" x1="0%" x2="100%" y1="0%" y2="100%">
-          <stop offset="0%" stop-color="#eef2ff" />
-          <stop offset="52%" stop-color="#dbeafe" />
-          <stop offset="100%" stop-color="#fde68a" />
-        </linearGradient>
-      </defs>
-      <rect width="1200" height="800" fill="url(#bg)" rx="36" />
-      <circle cx="968" cy="170" r="148" fill="rgba(15,23,42,0.08)" />
-      <circle cx="218" cy="598" r="164" fill="rgba(37,99,235,0.10)" />
-      <text x="84" y="158" fill="#334155" font-size="48" font-family="Space Grotesk, Arial, sans-serif">AI Canvas</text>
-      <text x="84" y="246" fill="#0f172a" font-size="90" font-family="Space Grotesk, Arial, sans-serif">${label}</text>
-      <text x="84" y="324" fill="#475569" font-size="28" font-family="Space Grotesk, Arial, sans-serif">Mock generated locally for the agent sidebar workflow.</text>
-    </svg>
-  `);
-  return `data:image/svg+xml;charset=utf-8,${encoded}`;
-}
-
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -92,16 +71,6 @@ function triggerDownload(filename: string, href: string): void {
   anchor.click();
 }
 
-function makeAssistantMessage(text: string, suggestions: ChatSuggestion[] = []): ChatMessage {
-  return {
-    id: createId('message'),
-    role: 'assistant',
-    text,
-    createdAt: Date.now(),
-    suggestions,
-  };
-}
-
 function makeUserMessage(text: string): ChatMessage {
   return {
     id: createId('message'),
@@ -112,14 +81,76 @@ function makeUserMessage(text: string): ChatMessage {
   };
 }
 
-function createPendingJob(prompt: string): GenerationJob {
+function createPendingJob(prompt: string, mediaType: GenerationJob['mediaType'] = 'image'): GenerationJob {
   const now = Date.now();
   return {
     id: createId('job'),
     prompt,
+    mediaType,
     status: 'pending',
     createdAt: now,
     updatedAt: now,
+  };
+}
+
+function createGeneratedAsset({
+  mediaType,
+  sourceJobId,
+  response,
+}: {
+  mediaType: AssetRecord['type'];
+  sourceJobId: string;
+  response:
+    | Awaited<ReturnType<typeof generateImage>>
+    | Awaited<ReturnType<typeof generateVideo>>;
+}): AssetRecord {
+  const now = Date.now();
+
+  if (mediaType === 'video') {
+    const videoResponse = response as Awaited<ReturnType<typeof generateVideo>>;
+    return {
+      id: createId('asset'),
+      type: 'video',
+      name: `Generated video ${new Date().toLocaleTimeString()}`,
+      mimeType: videoResponse.mimeType ?? 'video/mp4',
+      src: videoResponse.videoUrl,
+      posterSrc: videoResponse.posterUrl ?? undefined,
+      width: videoResponse.width,
+      height: videoResponse.height,
+      durationSeconds: videoResponse.durationSeconds,
+      origin: 'generated',
+      createdAt: now,
+      sourceJobId,
+    };
+  }
+
+  const imageResponse = response as Awaited<ReturnType<typeof generateImage>>;
+  return {
+    id: createId('asset'),
+    type: 'image',
+    name: `Generated image ${new Date().toLocaleTimeString()}`,
+    mimeType: 'image/jpeg',
+    src: imageResponse.imageUrl,
+    width: imageResponse.width,
+    height: imageResponse.height,
+    origin: 'generated',
+    createdAt: now,
+    sourceJobId,
+  };
+}
+
+function createGeneratedNode(asset: AssetRecord, center: { x: number; y: number }): CanvasNode {
+  const width = Math.min(asset.width, 360);
+  const height = Math.min(asset.height, 240);
+
+  return {
+    id: createId('node'),
+    type: asset.type,
+    assetId: asset.id,
+    x: center.x - width / 2,
+    y: center.y - height / 2,
+    w: width,
+    h: height,
   };
 }
 
@@ -153,46 +184,29 @@ function App() {
   const [state, setState] = useState<CanvasStoreState>(() => createInitialStore(loadProject()));
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isAgentSidebarOpen, setIsAgentSidebarOpen] = useState(true);
+  const [isCanvasInteractionActive, setIsCanvasInteractionActive] = useState(false);
   const [prompt, setPrompt] = useState('editorial poster about infinite canvas creativity');
+  const [generationMediaType, setGenerationMediaType] = useState<AssetRecord['type']>('image');
   const [chatInput, setChatInput] = useState('');
-  const [jobTimers, setJobTimers] = useState<number[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const chatThreadRef = useRef<HTMLDivElement | null>(null);
-
-  async function appendAssistantEventMessage(request: AssistantEventRequest, targetSessionId?: string | null): Promise<void> {
-    const sessionId = targetSessionId ?? state.project.chat.activeSessionId;
-    if (!sessionId) {
-      return;
-    }
-
-    try {
-      const response = await fetchAssistantEventMessage(request);
-      setState((prev) =>
-        replaceProjectNoHistory(
-          prev,
-          updateSessionById(prev.project, sessionId, (session) =>
-            appendMessagesToSession(session, makeAssistantMessage(response.assistantMessage.text, response.assistantMessage.suggestions)),
-          ),
-        ),
-      );
-    } catch (error) {
-      logAppChat('assistant:event:error', {
-        event: request.event,
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
+  const latestProjectRef = useRef(state.project);
+  const latestSelectedIdRef = useRef(state.selectedId);
+  const deferredSaveRef = useRef(createDeferredProjectSaver());
 
   useEffect(() => {
-    saveProject(state.project);
+    latestProjectRef.current = state.project;
   }, [state.project]);
 
-  useEffect(
-    () => () => {
-      jobTimers.forEach((timer) => window.clearTimeout(timer));
-    },
-    [jobTimers],
-  );
+  useEffect(() => {
+    latestSelectedIdRef.current = state.selectedId;
+  }, [state.selectedId]);
+
+  useEffect(() => {
+    deferredSaveRef.current.schedule(state.project);
+  }, [state.project]);
+
+  useEffect(() => () => deferredSaveRef.current.cancel(), []);
 
   useEffect(() => {
     if (!chatThreadRef.current) {
@@ -213,7 +227,7 @@ function App() {
 
       if (cmdOrCtrl && event.key.toLowerCase() === 's') {
         event.preventDefault();
-        saveProject(state.project);
+        deferredSaveRef.current.flush(latestProjectRef.current);
         return;
       }
 
@@ -243,7 +257,7 @@ function App() {
         return;
       }
 
-      if ((event.key === 'Delete' || event.key === 'Backspace') && state.selectedId) {
+      if ((event.key === 'Delete' || event.key === 'Backspace') && latestSelectedIdRef.current) {
         const activeElement = document.activeElement;
         if (activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement) {
           return;
@@ -280,7 +294,7 @@ function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [state.project, state.selectedId]);
+  }, []);
 
   useEffect(() => {
     function preventBrowserZoomWithWheel(event: WheelEvent): void {
@@ -323,7 +337,7 @@ function App() {
   const selectedNode = useMemo(() => getSelectedNode(state), [state]);
   const activeSession = useMemo(() => getActiveChatSession(state.project), [state.project]);
   const selectedAsset = useMemo(() => {
-    if (!selectedNode || selectedNode.type !== 'image') {
+    if (!selectedNode || (selectedNode.type !== 'image' && selectedNode.type !== 'video')) {
       return null;
     }
     return getAssetById(state.project.assets, selectedNode.assetId);
@@ -343,7 +357,7 @@ function App() {
       return null;
     }
 
-    const bounds = normalizeBounds(getNodeBounds(selectedNode));
+    const bounds = normalizeBounds(getCanvasNodeBounds(selectedNode));
     const topLeft = worldToScreen({ x: bounds.x, y: bounds.y }, state.project.board.viewport);
     const width = bounds.w * state.project.board.viewport.scale;
     const top = Math.max(topLeft.y - 64, 84);
@@ -422,57 +436,39 @@ function App() {
         assets: upsertAsset(prev.project.assets, asset),
       }),
     );
-
-    void appendAssistantEventMessage({
-      event: 'asset-uploaded',
-      metadata: { fileName: file.name },
-    }, state.project.chat.activeSessionId);
   }
 
   function insertAsset(asset: AssetRecord): void {
     setState((prev) => {
+      const viewport = prev.project.board.viewport;
+      const container = chatThreadRef.current?.closest('.app-shell') as HTMLElement | null;
+      const screenCenter = {
+        x: container ? container.clientWidth / 2 : 640,
+        y: container ? container.clientHeight / 2 : 360,
+      };
+      const worldCenter = screenToWorld(screenCenter, viewport);
+      const node = createGeneratedNode(asset, worldCenter);
+
       const nextProject: CanvasProject = {
         ...prev.project,
+        assets: upsertAsset(prev.project.assets, asset),
         board: {
           ...prev.project.board,
-          nodes: [
-            ...prev.project.board.nodes,
-            {
-              id: createId('node'),
-              type: 'image',
-              assetId: asset.id,
-              x: -Math.min(asset.width, 360) / 2,
-              y: -Math.min(asset.height, 240) / 2,
-              w: Math.min(asset.width, 360),
-              h: Math.min(asset.height, 240),
-            },
-          ],
+          nodes: [...prev.project.board.nodes, node],
         },
       };
       const nextState = commitProject(prev, nextProject);
-      return setSelectedId(nextState, nextProject.board.nodes[nextProject.board.nodes.length - 1].id);
+      return setSelectedId(nextState, node.id);
     });
-
-    void appendAssistantEventMessage({
-      event: 'asset-inserted',
-      metadata: { assetName: asset.name },
-    }, state.project.chat.activeSessionId);
   }
 
-  function startMockGeneration(promptOverride?: string, source: 'panel' | 'chat' = 'panel'): void {
+  async function startMockGeneration(promptOverride?: string, mediaType: AssetRecord['type'] = 'image'): Promise<void> {
     const trimmedPrompt = (promptOverride ?? prompt).trim();
     if (!trimmedPrompt) {
       return;
     }
 
-    if (source === 'panel') {
-      void appendAssistantEventMessage({
-        event: 'generation-requested',
-        metadata: { prompt: trimmedPrompt },
-      }, state.project.chat.activeSessionId);
-    }
-
-    const job = createPendingJob(trimmedPrompt);
+    const job = createPendingJob(trimmedPrompt, mediaType);
 
     setState((prev) =>
       replaceProjectNoHistory(prev, {
@@ -480,57 +476,42 @@ function App() {
         jobs: upsertJob(prev.project.jobs, job),
       }),
     );
-
-    const timer = window.setTimeout(() => {
-      const succeed = trimmedPrompt.toLowerCase() !== 'fail';
-      setState((prev) => {
-        if (!succeed) {
-          void appendAssistantEventMessage({ event: 'generation-failed' }, state.project.chat.activeSessionId);
-          return replaceProjectNoHistory(
-            prev,
-            {
-              ...prev.project,
-              jobs: upsertJob(prev.project.jobs, {
-                ...job,
-                status: 'failed',
-                updatedAt: Date.now(),
-                error: 'Mock generation failed. Use another prompt.',
-              }),
-            },
-          );
-        }
-
-        const asset: AssetRecord = {
-          id: createId('asset'),
-          type: 'image',
-          name: `Generated ${new Date().toLocaleTimeString()}`,
-          mimeType: 'image/svg+xml',
-          src: createGeneratedSvg(trimmedPrompt),
-          width: 1200,
-          height: 800,
-          origin: 'generated',
-          createdAt: Date.now(),
-          sourceJobId: job.id,
-        };
-
-        void appendAssistantEventMessage({ event: 'generation-succeeded' }, state.project.chat.activeSessionId);
-        return replaceProjectNoHistory(
-          prev,
-          {
-            ...prev.project,
-            assets: upsertAsset(prev.project.assets, asset),
-            jobs: upsertJob(prev.project.jobs, {
-              ...job,
-              status: 'success',
-              updatedAt: Date.now(),
-              assetId: asset.id,
-            }),
-          },
-        );
+    try {
+      const generated =
+        mediaType === 'video'
+          ? await generateVideo({ prompt: trimmedPrompt })
+          : await generateImage({ prompt: trimmedPrompt });
+      const asset = createGeneratedAsset({
+        mediaType,
+        sourceJobId: job.id,
+        response: generated,
       });
-    }, 900);
 
-    setJobTimers((prev) => [...prev, timer]);
+      setState((prev) =>
+        replaceProjectNoHistory(prev, {
+          ...prev.project,
+          assets: upsertAsset(prev.project.assets, asset),
+          jobs: upsertJob(prev.project.jobs, {
+            ...job,
+            status: 'success',
+            updatedAt: Date.now(),
+            assetId: asset.id,
+          }),
+        }),
+      );
+    } catch (error) {
+      setState((prev) =>
+        replaceProjectNoHistory(prev, {
+          ...prev.project,
+          jobs: upsertJob(prev.project.jobs, {
+            ...job,
+            status: 'failed',
+            updatedAt: Date.now(),
+            error: error instanceof Error ? error.message : `${mediaType === 'video' ? 'Video' : 'Image'} generation failed.`,
+          }),
+        }),
+      );
+    }
   }
 
   function nudgeLayer(direction: 'forward' | 'backward'): void {
@@ -555,7 +536,7 @@ function App() {
   function insertTextNode(text: string): void {
     setState((prev) => {
       const selected = getNodeById(prev.project.board.nodes, prev.selectedId);
-      const bounds = selected ? normalizeBounds(getNodeBounds(selected)) : { x: -120, y: -40, w: 0, h: 0 };
+      const bounds = selected ? normalizeBounds(getCanvasNodeBounds(selected)) : { x: -120, y: -40, w: 0, h: 0 };
 
       const textNode: TextNode = {
         id: createId('node'),
@@ -581,8 +562,6 @@ function App() {
       const selectedState = setSelectedId(nextState, textNode.id);
       return setTool(selectedState, 'select');
     });
-
-    void appendAssistantEventMessage({ event: 'text-inserted' }, state.project.chat.activeSessionId);
   }
 
   function applyAgentEffects(effects: AgentEffect[]): void {
@@ -594,21 +573,67 @@ function App() {
         return;
       }
 
+      if (effect.type === 'insert-image') {
+        setPrompt(effect.prompt);
+        insertAsset({
+          id: createId('asset'),
+          type: 'image',
+          name: `Generated ${new Date().toLocaleTimeString()}`,
+          mimeType: effect.mimeType ?? 'image/jpeg',
+          src: effect.imageUrl,
+          width: effect.width,
+          height: effect.height,
+          origin: 'generated',
+          createdAt: Date.now(),
+        });
+        return;
+      }
+
+      if (effect.type === 'insert-video') {
+        setPrompt(effect.prompt);
+        insertAsset({
+          id: createId('asset'),
+          type: 'video',
+          name: `Generated video ${new Date().toLocaleTimeString()}`,
+          mimeType: effect.mimeType ?? 'video/mp4',
+          src: effect.videoUrl,
+          posterSrc: effect.posterUrl ?? undefined,
+          width: effect.width,
+          height: effect.height,
+          durationSeconds: effect.durationSeconds,
+          origin: 'generated',
+          createdAt: Date.now(),
+        });
+        return;
+      }
+
       if (effect.type === 'style-variation') {
         setPrompt(effect.prompt);
-        startMockGeneration(effect.prompt, 'chat');
+        void startMockGeneration(effect.prompt, effect.mediaType ?? 'image');
         return;
       }
 
       if (effect.type === 'start-generation') {
         setPrompt(effect.prompt);
-        startMockGeneration(effect.prompt, 'chat');
+        void startMockGeneration(effect.prompt, effect.mediaType ?? 'image');
       }
     });
   }
 
   const agentChat = useAgentChat({
     initialMessages: activeSession?.messages ?? [],
+    onResponseData({ responseData }) {
+      logAppChat('assistant:data', {
+        suggestionCount: responseData?.suggestions.length ?? 0,
+        effectCount: responseData?.effects.length ?? 0,
+        conversationId: responseData?.conversationId,
+        previousResponseId: responseData?.previousResponseId,
+      });
+
+      if (responseData?.effects?.length) {
+        applyAgentEffects(responseData.effects);
+      }
+    },
     onAssistantFinish({ message, responseData, targetSessionId }) {
       logAppChat('assistant:finish', {
         messageId: message.id,
@@ -638,10 +663,6 @@ function App() {
             : prev.project,
         ),
       );
-
-      if (responseData?.effects?.length) {
-        applyAgentEffects(responseData.effects);
-      }
     },
     onError(error) {
       logAppChat('assistant:error', {
@@ -649,6 +670,22 @@ function App() {
       });
     },
   });
+
+  const voiceComposer = useVoiceComposer({
+    onTranscript(transcript) {
+      setChatInput((currentDraft) => mergeTranscriptIntoDraft(currentDraft, transcript));
+    },
+  });
+
+  const composerStatusText =
+    voiceComposer.status === 'recording'
+      ? '录音中，再次点按可停止并开始转写'
+      : voiceComposer.status === 'transcribing'
+        ? '正在转写语音，完成后会回填到输入框供你编辑'
+        : '录音转写后可编辑再发送，消息会结合当前画布和最近操作';
+
+  const voiceButtonLabel =
+    voiceComposer.status === 'recording' ? '停止' : voiceComposer.status === 'transcribing' ? '转写中' : '录音';
 
   async function submitChatMessage(message: string): Promise<void> {
     const trimmed = message.trim();
@@ -748,10 +785,15 @@ function App() {
   const hasCanvasContent = state.project.board.nodes.length > 0 || state.project.assets.length > 0;
   const latestJob = state.project.jobs[0] ?? null;
   const sessionCount = state.project.chat.sessions.length;
+  const generationButtonLabel = generationMediaType === 'video' ? '生成首版视频' : '生成首版画面';
 
   return (
     <div className="app-shell">
-      <div className={isAgentSidebarOpen ? 'canvas-shell with-agent-sidebar' : 'canvas-shell sidebar-collapsed'}>
+      <div
+        className={
+          `${isAgentSidebarOpen ? 'canvas-shell with-agent-sidebar' : 'canvas-shell sidebar-collapsed'}${isCanvasInteractionActive ? ' interaction-active' : ''}`
+        }
+      >
         <header className="floating-header">
           <div className="header-cluster">
             <button className="brand-dot" type="button" aria-label="Workspace home">
@@ -793,6 +835,22 @@ function App() {
             <strong>先定一张主画面</strong>
             <span>用一句描述开启当前画板的第一版视觉方向</span>
           </div>
+          <div className="generation-mode-toggle" role="group" aria-label="生成类型">
+            <button
+              className={generationMediaType === 'image' ? 'mode-chip active' : 'mode-chip'}
+              type="button"
+              onClick={() => setGenerationMediaType('image')}
+            >
+              图片
+            </button>
+            <button
+              className={generationMediaType === 'video' ? 'mode-chip active' : 'mode-chip'}
+              type="button"
+              onClick={() => setGenerationMediaType('video')}
+            >
+              视频
+            </button>
+          </div>
           <textarea
             id="prompt"
             className="text-input prompt-input"
@@ -801,8 +859,8 @@ function App() {
             onChange={(event) => setPrompt(event.target.value)}
           />
           <div className="compact-actions">
-            <button className="ghost-btn ghost-btn-dark" type="button" onClick={() => startMockGeneration()}>
-              生成首版画面
+            <button className="ghost-btn ghost-btn-dark" type="button" onClick={() => void startMockGeneration(undefined, generationMediaType)}>
+              {generationButtonLabel}
             </button>
             <button className="ghost-btn" type="button" onClick={() => fileInputRef.current?.click()}>
               导入参考图
@@ -823,7 +881,9 @@ function App() {
               {state.project.jobs.slice(0, 2).map((job) => (
                 <div key={job.id} className={`mini-pill mini-pill-${job.status}`}>
                   <strong>{job.status === 'success' ? '已生成' : job.status === 'failed' ? '失败' : '处理中'}</strong>
-                  <span>{job.prompt.slice(0, 16)}</span>
+                  <span>
+                    {job.mediaType === 'video' ? '视频' : '图片'} · {job.prompt.slice(0, 16)}
+                  </span>
                 </div>
               ))}
             </div>
@@ -839,7 +899,16 @@ function App() {
             {state.project.assets.length === 0 ? <p className="empty-state">生成结果和导入素材会先停在这里，点一下即可放入画板。</p> : null}
             {state.project.assets.map((asset) => (
               <button key={asset.id} className="asset-chip" type="button" onClick={() => insertAsset(asset)}>
-                <img alt={asset.name} src={asset.src} />
+                <div className={asset.type === 'video' ? 'asset-chip-preview asset-chip-preview-video' : 'asset-chip-preview'}>
+                  {asset.type === 'video' ? (
+                    <>
+                      <video aria-hidden="true" muted playsInline preload="metadata" src={asset.src} poster={asset.posterSrc ?? undefined} />
+                      <span className="asset-chip-badge">视频</span>
+                    </>
+                  ) : (
+                    <img alt={asset.name} src={asset.src} />
+                  )}
+                </div>
                 <span>{asset.name}</span>
               </button>
             ))}
@@ -861,14 +930,14 @@ function App() {
           </section>
         ) : null}
 
-        {selectedNode && selectionToolbarStyle ? (
+        {selectedNode && selectionToolbarStyle && !isCanvasInteractionActive ? (
           <section className="selection-toolbar" style={selectionToolbarStyle}>
             <div className="selection-pill">
               <span>{selectedNode.type}</span>
             </div>
             <div className="selection-pill">
               <span>
-                W {Math.round(normalizeBounds(getNodeBounds(selectedNode)).w)} H {Math.round(normalizeBounds(getNodeBounds(selectedNode)).h)}
+                W {Math.round(normalizeBounds(getCanvasNodeBounds(selectedNode)).w)} H {Math.round(normalizeBounds(getCanvasNodeBounds(selectedNode)).h)}
               </span>
             </div>
             <button className="toolbar-icon-btn" type="button" onClick={() => nudgeLayer('backward')}>
@@ -886,6 +955,7 @@ function App() {
             tool={state.tool}
             selectedId={state.selectedId}
             isSpacePressed={isSpacePressed}
+            onInteractionActiveChange={setIsCanvasInteractionActive}
             onSelect={handleSelect}
             onReplaceProject={handleReplaceProject}
             onCommitProject={handleCommitProject}
@@ -954,10 +1024,10 @@ function App() {
             <section className="agent-context-card">
               <div className="panel-row">
                 <strong>当前上下文</strong>
-                <span>{selectedNode?.type ?? latestJob?.status ?? 'idle'}</span>
+                <span>{selectedNode?.type ?? latestJob?.mediaType ?? latestJob?.status ?? 'idle'}</span>
               </div>
               {selectedNode ? <p>已选中 {selectedNode.type} 节点，可继续补文字、改风格或生成变体。</p> : null}
-              {selectedAsset ? <p>当前关联资产：{selectedAsset.name}</p> : null}
+              {selectedAsset ? <p>当前关联资产：{selectedAsset.name} ({selectedAsset.type === 'video' ? '视频' : '图片'})</p> : null}
               {!selectedNode && !selectedAsset && latestJob ? <p>最近一次生成主题：{latestJob.prompt}</p> : null}
             </section>
           ) : null}
@@ -1005,6 +1075,9 @@ function App() {
             className="agent-composer"
             onSubmit={(event) => {
               event.preventDefault();
+              if (voiceComposer.status !== 'idle') {
+                return;
+              }
               submitChatMessage(chatInput);
             }}
           >
@@ -1016,10 +1089,35 @@ function App() {
               onChange={(event) => setChatInput(event.target.value)}
             />
             <div className="agent-composer-footer">
-              <span>消息会结合当前画布和最近操作</span>
-              <button className="ghost-btn ghost-btn-dark" type="submit">
-                发送
-              </button>
+              <span
+                className={voiceComposer.errorMessage ? 'agent-composer-status agent-composer-status-error' : 'agent-composer-status'}
+                role={voiceComposer.errorMessage ? 'alert' : 'status'}
+              >
+                {voiceComposer.errorMessage ?? composerStatusText}
+              </span>
+              <div className="agent-composer-actions">
+                <button
+                  className={
+                    voiceComposer.status === 'recording'
+                      ? 'ghost-btn ghost-btn-dark agent-voice-btn agent-voice-btn-recording'
+                      : voiceComposer.status === 'transcribing'
+                        ? 'ghost-btn ghost-btn-dark agent-voice-btn agent-voice-btn-transcribing'
+                        : 'ghost-btn ghost-btn-dark agent-voice-btn'
+                  }
+                  type="button"
+                  onClick={() => {
+                    void voiceComposer.toggleRecording();
+                  }}
+                  aria-label={voiceComposer.status === 'recording' ? '停止录音' : voiceComposer.status === 'transcribing' ? '正在转写' : '开始录音'}
+                  aria-pressed={voiceComposer.status === 'recording'}
+                  disabled={voiceComposer.status === 'transcribing'}
+                >
+                  {voiceButtonLabel}
+                </button>
+                <button className="ghost-btn ghost-btn-dark" type="submit" disabled={voiceComposer.status !== 'idle' || !chatInput.trim()}>
+                  发送
+                </button>
+              </div>
             </div>
           </form>
         </aside>
