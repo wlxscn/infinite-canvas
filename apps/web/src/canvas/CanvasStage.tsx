@@ -6,6 +6,7 @@ import {
   renderScene,
   type DraftState,
   type CanvasInteractionController,
+  type SnapGuide,
 } from '@infinite-canvas/canvas-engine';
 import {
   useCallback,
@@ -80,6 +81,44 @@ function CanvasRuler({ axis, model }: CanvasRulerProps) {
           <span className="canvas-ruler-label">{tick.label}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+function CanvasSnapGuides({ guides }: { guides: SnapGuide[] }) {
+  if (guides.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="canvas-snap-guides" aria-hidden="true">
+      {guides.map((guide, index) => {
+        if (guide.axis === 'x') {
+          return (
+            <div
+              key={`snap-x-${index}`}
+              className={`canvas-snap-guide canvas-snap-guide-x canvas-snap-guide-${guide.kind}`}
+              style={{
+                left: guide.screenPosition,
+                top: guide.start,
+                height: Math.max(0, guide.end - guide.start),
+              }}
+            />
+          );
+        }
+
+        return (
+          <div
+            key={`snap-y-${index}`}
+            className={`canvas-snap-guide canvas-snap-guide-y canvas-snap-guide-${guide.kind}`}
+            style={{
+              top: guide.screenPosition,
+              left: guide.start,
+              width: Math.max(0, guide.end - guide.start),
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -315,6 +354,7 @@ export function CanvasStage({
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
         />
+        <CanvasSnapGuides guides={interactionState.snapGuides} />
         <VideoOverlayLayer board={project.board} assets={project.assets} selectedId={selectedId} />
       </div>
     </div>

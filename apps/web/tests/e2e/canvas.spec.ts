@@ -98,6 +98,32 @@ function createEngineSeedProject() {
   return project;
 }
 
+function createSnapSeedProject() {
+  const project = createSeedProject();
+  project.board.nodes = [
+    {
+      id: 'node_rect_seed',
+      type: 'rect',
+      x: 320,
+      y: 220,
+      w: 140,
+      h: 100,
+      stroke: '#111827',
+      fill: 'rgba(59, 130, 246, 0.2)',
+    },
+    {
+      id: 'node_image_seed',
+      type: 'image',
+      x: 520,
+      y: 360,
+      w: 160,
+      h: 110,
+      assetId: 'asset_seed_1',
+    },
+  ];
+  return project;
+}
+
 test('can persist seeded sidebar sessions and local asset interactions after reload', async ({ page }) => {
   const sessionItems = page.locator('.agent-session-item');
 
@@ -195,6 +221,38 @@ test('rulers stay visible and react to selection and zoom changes', async ({ pag
   const horizontalRangeAfterZoom = await horizontalRange.boundingBox();
   expect(horizontalRangeAfterZoom).not.toBeNull();
   expect(horizontalRangeAfterZoom!.width).toBeGreaterThan(horizontalRangeBeforeZoom!.width);
+});
+
+test('dragged nodes snap to nearby alignment targets', async ({ page }) => {
+  await page.addInitScript(([storageKey, project]) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(project));
+    window.sessionStorage.setItem('__seeded_project__', 'true');
+  }, [STORAGE_KEY, createSnapSeedProject()]);
+
+  await page.goto('/');
+
+  const canvas = page.locator('canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+
+  if (!box) {
+    return;
+  }
+
+  await page.getByRole('button', { name: '选择' }).click();
+  await page.mouse.move(box.x + 390, box.y + 270);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 588, box.y + 408, { steps: 16 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+
+  const project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  const rectNode = project.board.nodes.find((node: { id: string }) => node.id === 'node_rect_seed');
+
+  expect(rectNode.x).toBe(520);
+  expect(rectNode.y).toBe(360);
+  await expect(page.locator('.canvas-ruler-range-x')).toBeVisible();
+  await expect(page.locator('.canvas-ruler-range-y')).toBeVisible();
 });
 
 test('rect, freehand, text, and media nodes remain available after engine-backed dispatch', async ({ page }) => {

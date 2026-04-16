@@ -208,6 +208,31 @@ body {
   right: 0;
 }
 
+.canvas-snap-guides {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.canvas-snap-guide {
+  position: absolute;
+  background: rgba(196, 78, 28, 0.9);
+  box-shadow: 0 0 0 1px rgba(255, 247, 237, 0.35);
+}
+
+.canvas-snap-guide-x {
+  width: 1px;
+}
+
+.canvas-snap-guide-y {
+  height: 1px;
+}
+
+.canvas-snap-guide-center {
+  background: rgba(37, 99, 235, 0.82);
+}
+
 .video-overlay-layer {
   position: absolute;
   inset: 0;

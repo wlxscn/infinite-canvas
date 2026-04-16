@@ -17,6 +17,7 @@ import {
   type PointerMode,
 } from './controller-state';
 import type { BoardDoc, CanvasNode, FreehandNode, Point, RectNode, TextNode } from './model';
+import { computeDragSnap } from './snap';
 
 const RESIZE_HANDLE_SIZE = 14;
 const WHEEL_COMMIT_DELAY_MS = 80;
@@ -203,7 +204,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
     startScreen = null;
     startWorld = null;
     beforeMutation = null;
-    setMode('idle');
+    updateState({ pointerMode: 'idle', snapGuides: [] });
   }
 
   function beginPinchIfNeeded(): void {
@@ -401,17 +402,24 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       if (state.pointerMode === 'dragging-node' && startWorld && activeNodeId) {
         const dx = worldPoint.x - startWorld.x;
         const dy = worldPoint.y - startWorld.y;
-        startWorld = worldPoint;
-
-        const node = options.getNodeById(currentBoard.nodes, activeNodeId);
+        const node = beforeMutation ? options.getNodeById(beforeMutation.board.nodes, activeNodeId) : null;
         if (!node) {
           return;
         }
 
+        const snapResult = computeDragSnap({
+          node,
+          delta: { x: dx, y: dy },
+          nodes: currentBoard.nodes,
+          viewport: currentBoard.viewport,
+        });
+
+        updateState({ snapGuides: snapResult.guides });
+
         scheduleReplaceProject(
           updateBoard({
             ...currentBoard,
-            nodes: options.upsertNode(currentBoard.nodes, translateCanvasNode(node, { x: dx, y: dy })),
+            nodes: options.upsertNode(currentBoard.nodes, translateCanvasNode(node, snapResult.delta)),
           }),
         );
         return;

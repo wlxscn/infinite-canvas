@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   canDrawLoadedImage,
+  computeDragSnap,
   createCanvasInteractionController,
   createCanvasRenderRuntime,
   getCanvasNodeBounds,
@@ -285,6 +286,183 @@ describe('canvas engine', () => {
     expect(onCommitProject).not.toHaveBeenCalled();
     expect(onFinalizeMutation).toHaveBeenCalledTimes(1);
     expect(onReplaceProject.mock.calls[0][0].board.nodes[0]).toMatchObject({ x: 50, y: 60 });
+
+    controller.dispose();
+  });
+
+  it('snaps dragged nodes to nearby edges and centers within the screen threshold', () => {
+    const node: CanvasNode = {
+      id: 'drag_1',
+      type: 'rect',
+      x: 0,
+      y: 0,
+      w: 100,
+      h: 80,
+      stroke: '#000',
+    };
+    const target: CanvasNode = {
+      id: 'target_1',
+      type: 'rect',
+      x: 180,
+      y: 20,
+      w: 120,
+      h: 120,
+      stroke: '#000',
+    };
+
+    const result = computeDragSnap({
+      node,
+      delta: { x: 78, y: 38 },
+      nodes: [node, target],
+      viewport: { tx: 0, ty: 0, scale: 1 },
+    });
+
+    expect(result.delta).toEqual({ x: 80, y: 40 });
+    expect(result.matches.x?.target).toBe('start');
+    expect(result.matches.y?.target).toBe('center');
+    expect(result.guides).toHaveLength(2);
+  });
+
+  it('keeps freeform drag when candidates fall outside the snap threshold', () => {
+    const node: CanvasNode = {
+      id: 'drag_1',
+      type: 'rect',
+      x: 0,
+      y: 0,
+      w: 100,
+      h: 80,
+      stroke: '#000',
+    };
+    const target: CanvasNode = {
+      id: 'target_1',
+      type: 'rect',
+      x: 180,
+      y: 20,
+      w: 120,
+      h: 120,
+      stroke: '#000',
+    };
+
+    const result = computeDragSnap({
+      node,
+      delta: { x: 70, y: 27 },
+      nodes: [node, target],
+      viewport: { tx: 0, ty: 0, scale: 1 },
+    });
+
+    expect(result.delta).toEqual({ x: 70, y: 27 });
+    expect(result.guides).toEqual([]);
+  });
+
+  it('exposes snap guides during drag without creating extra finalize events', () => {
+    const base = createEmptyProject();
+    const project = {
+      ...base,
+      board: {
+        ...base.board,
+        nodes: [
+          {
+            id: 'node_rect_1',
+            type: 'rect' as const,
+            x: 10,
+            y: 20,
+            w: 120,
+            h: 90,
+            stroke: '#000',
+          },
+          {
+            id: 'node_rect_2',
+            type: 'rect' as const,
+            x: 200,
+            y: 30,
+            w: 100,
+            h: 120,
+            stroke: '#000',
+          },
+        ],
+      },
+    };
+
+    const onSelect = vi.fn();
+    const onReplaceProject = vi.fn();
+    const onCommitProject = vi.fn();
+    const onFinalizeMutation = vi.fn();
+    const onStateChange = vi.fn();
+
+    const controller = createCanvasInteractionController({
+      project,
+      selectedId: 'node_rect_1',
+      getTool: () => 'select',
+      isSpacePressed: () => false,
+      createRectNode: (point) => ({
+        id: 'draft_rect',
+        type: 'rect',
+        x: point.x,
+        y: point.y,
+        w: 0,
+        h: 0,
+        stroke: '#000',
+      }),
+      createFreehandNode: (point) => ({
+        id: 'draft_line',
+        type: 'freehand',
+        points: [point],
+        stroke: '#000',
+        width: 2,
+      }),
+      createTextNode: (point) => ({
+        id: 'draft_text',
+        type: 'text',
+        x: point.x,
+        y: point.y,
+        w: 100,
+        h: 50,
+        text: 'text',
+        color: '#000',
+        fontSize: 16,
+        fontFamily: 'sans-serif',
+      }),
+      getNodeById,
+      upsertNode,
+      onSelect,
+      onReplaceProject,
+      onCommitProject,
+      onFinalizeMutation,
+      onStateChange,
+      render: () => {},
+      requestAnimationFrame: (() => 1) as typeof window.requestAnimationFrame,
+      cancelAnimationFrame: (() => {}) as typeof window.cancelAnimationFrame,
+    });
+
+    controller.handlePointerDown({
+      screenPoint: { x: 20, y: 30 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+
+    controller.handlePointerMove({
+      screenPoint: { x: 96, y: 40 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+
+    expect(controller.getState().snapGuides).toHaveLength(2);
+
+    controller.handlePointerUp({
+      screenPoint: { x: 96, y: 40 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+
+    const draggedNode = onReplaceProject.mock.calls[0][0].board.nodes.find((node: CanvasNode) => node.id === 'node_rect_1');
+    expect(draggedNode).toMatchObject({ x: 80, y: 30 });
+    expect(controller.getState().snapGuides).toEqual([]);
+    expect(onFinalizeMutation).toHaveBeenCalledTimes(1);
+    expect(onCommitProject).not.toHaveBeenCalled();
+    expect(onStateChange).toHaveBeenCalled();
 
     controller.dispose();
   });

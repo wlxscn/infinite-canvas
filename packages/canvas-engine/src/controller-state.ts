@@ -14,9 +14,18 @@ export interface DraftState {
   draftFreehand: FreehandNode | null;
 }
 
+export interface SnapGuide {
+  axis: 'x' | 'y';
+  screenPosition: number;
+  start: number;
+  end: number;
+  kind: 'edge' | 'center';
+}
+
 export interface CanvasInteractionState extends DraftState {
   pointerMode: PointerMode;
   isWheelInteractionActive: boolean;
+  snapGuides: SnapGuide[];
 }
 
 export function createInitialInteractionState(): CanvasInteractionState {
@@ -25,6 +34,7 @@ export function createInitialInteractionState(): CanvasInteractionState {
     isWheelInteractionActive: false,
     draftRect: null,
     draftFreehand: null,
+    snapGuides: [],
   };
 }
 

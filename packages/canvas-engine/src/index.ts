@@ -31,7 +31,9 @@ export {
   type CanvasInteractionState,
   type DraftState,
   type PointerMode,
+  type SnapGuide,
 } from './controller-state';
+export { computeDragSnap, type DragSnapResult, type SnapMatch } from './snap';
 export {
   drawCanvasNode,
   getCanvasNodeBounds,
