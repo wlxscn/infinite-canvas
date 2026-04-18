@@ -11,6 +11,7 @@
 - 保持右侧 `AgentSidebar` 为纯对话入口，不新增结构化快捷生成区。
 - 将首页和空态文案改写为“右侧表达需求 -> 左侧接收素材 -> 中间编辑画布”的三栏模型。
 - 将工作区布局从“整页画布 + 左侧浮层 + 右侧侧栏”调整为“Header + 左侧素材栏 + 中间画布工作区 + 右侧对话栏”。
+- 确保左侧素材栏、中间画布工作区和右侧对话栏在纵向上铺满工作区可用高度，不再在底部留下额外空白带。
 - 明确本次范围不包含素材删除、重命名、分组管理、搜索筛选或新的文档持久化字段。
 
 ## Capabilities
@@ -26,6 +27,7 @@
 - 受影响的前端代码预计主要位于 `apps/web/src/App.tsx`、`apps/web/src/components/PromptPanel.tsx`、`apps/web/src/components/AssetsPanel.tsx`、`apps/web/src/components/CanvasHero.tsx`、`apps/web/src/features/chat/components/AgentSidebar.tsx` 以及对应样式文件。
 - 该变更会修改 `ai-design-canvas` 的用户可见布局和生成流程，但不要求变更当前 `CanvasProject`、本地持久化格式、undo/redo 历史语义或画布文档结构。
 - 需要更新单元测试和 E2E，用于覆盖新三栏布局、左侧素材栏展开/收起、空态引导以及“右侧对话生成 -> 左侧素材承接”的行为。
+- 需要验证三栏在纵向上能够铺满工作区高度，避免 header 下方出现不必要的底部留白。
 - 非目标：
   - 不新增素材删除、重命名、收藏、搜索或复杂筛选能力。
   - 不在右侧对话栏加入新的结构化 prompt 表单或图片/视频快捷生成区。

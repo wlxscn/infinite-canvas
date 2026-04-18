@@ -3,6 +3,7 @@
 - [x] 1.1 重构 `apps/web/src/App.tsx` 的工作区骨架，将现有“左侧浮层 + 整页画布 + 右侧聊天栏”调整为“Header + 左侧素材栏 + 中间画布工作区 + 右侧聊天栏”的三栏布局。
 - [x] 1.2 从工作区中移除 `apps/web/src/components/PromptPanel.tsx` 的使用，并清理与其直接耦合的顶层布局占位与样式。
 - [x] 1.3 更新 `apps/web/src/index.css` 中与 `prompt-panel`、`assets-panel`、`canvas-stage-wrap` 和侧栏偏移相关的布局规则，使中央画布宽度由左右侧栏状态自然驱动。
+- [x] 1.4 修正三栏工作区的纵向高度约束，确保左侧素材栏、中间画布工作区和右侧对话栏在 header 下方铺满可用高度，而不是在底部保留额外空白。
 
 ## 2. Asset Sidebar
 
@@ -19,5 +20,5 @@
 ## 4. Validation
 
 - [x] 4.1 添加或更新单元测试，覆盖左侧素材栏展开/收起状态、素材列表展示与顶层布局相关的视图模型行为。
-- [x] 4.2 更新 `apps/web/tests/e2e/canvas.spec.ts`，验证新三栏布局可见、左侧素材栏可展开/收起，以及右侧对话生成/左侧素材承接的核心路径。
+- [x] 4.2 更新 `apps/web/tests/e2e/canvas.spec.ts`，验证新三栏布局可见、左侧素材栏可展开/收起、三栏纵向铺满工作区，以及右侧对话生成/左侧素材承接的核心路径。
 - [x] 4.3 运行 `pnpm test`、`pnpm test:e2e`、`pnpm lint` 和 `pnpm build`，确认三栏布局与现有画布编辑交互未回归。

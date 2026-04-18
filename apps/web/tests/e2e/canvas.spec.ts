@@ -179,6 +179,34 @@ test('asset sidebar can collapse and expand without hiding the canvas workspace'
   await expect(page.getByRole('button', { name: '导入参考图' })).toBeVisible();
 });
 
+test('three-column workspace fills the available vertical height', async ({ page }) => {
+  await page.addInitScript(([storageKey, project]) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(project));
+    window.sessionStorage.setItem('__seeded_project__', 'true');
+  }, [STORAGE_KEY, createSeedProject()]);
+
+  await page.goto('/');
+
+  const viewport = page.viewportSize();
+  expect(viewport).not.toBeNull();
+
+  if (!viewport) {
+    return;
+  }
+
+  const assetSidebarBox = await page.getByRole('complementary', { name: '素材管理侧栏' }).boundingBox();
+  const canvasWorkspaceBox = await page.locator('.canvas-workspace').boundingBox();
+  const agentSidebarBox = await page.getByRole('complementary', { name: 'Agent chat sidebar' }).boundingBox();
+
+  expect(assetSidebarBox).not.toBeNull();
+  expect(canvasWorkspaceBox).not.toBeNull();
+  expect(agentSidebarBox).not.toBeNull();
+
+  expect(assetSidebarBox!.y + assetSidebarBox!.height).toBeGreaterThan(viewport.height - 16);
+  expect(canvasWorkspaceBox!.y + canvasWorkspaceBox!.height).toBeGreaterThan(viewport.height - 16);
+  expect(agentSidebarBox!.y + agentSidebarBox!.height).toBeGreaterThan(viewport.height - 16);
+});
+
 test('can export project json', async ({ page }) => {
   await page.goto('/');
 
