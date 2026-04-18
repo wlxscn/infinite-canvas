@@ -79,6 +79,8 @@ export interface FreeConnectorEndpoint {
 
 export type ConnectorEndpoint = AttachedConnectorEndpoint | FreeConnectorEndpoint;
 
+export type ConnectorPathMode = 'straight' | 'polyline';
+
 export interface ConnectorNode {
   id: string;
   type: 'connector';
@@ -86,6 +88,8 @@ export interface ConnectorNode {
   end: ConnectorEndpoint;
   stroke: string;
   width: number;
+  pathMode?: ConnectorPathMode;
+  waypoints?: Point[];
 }
 
 export type CanvasNode = RectNode | FreehandNode | TextNode | ImageNode | VideoNode | ConnectorNode;

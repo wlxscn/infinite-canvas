@@ -16,7 +16,7 @@ import { useCanvasGenerationController } from './hooks/useCanvasGenerationContro
 import { usePreventBrowserZoom } from './hooks/usePreventBrowserZoom';
 import { useCanvasWorkspaceController } from './hooks/useCanvasWorkspaceController';
 import { useWorkspaceViewModel } from './hooks/useWorkspaceViewModel';
-import type { CanvasStoreState, Tool } from './types/canvas';
+import type { CanvasStoreState, ConnectorPathMode, Tool } from './types/canvas';
 import './index.css';
 
 const TOOLS: Array<{ id: Tool; label: string; icon: string }> = [
@@ -37,6 +37,7 @@ function App() {
   const [isAssetSidebarOpen, setIsAssetSidebarOpen] = useState(true);
   const [isAgentSidebarOpen, setIsAgentSidebarOpen] = useState(true);
   const [isCanvasInteractionActive, setIsCanvasInteractionActive] = useState(false);
+  const [connectorPathMode, setConnectorPathMode] = useState<ConnectorPathMode>('straight');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const chatThreadRef = useRef<HTMLDivElement | null>(null);
   const canvasStageWrapRef = useRef<HTMLDivElement | null>(null);
@@ -142,6 +143,7 @@ function App() {
               <CanvasStage
                 project={state.project}
                 tool={state.tool}
+                connectorPathMode={connectorPathMode}
                 selectedId={state.selectedId}
                 isSpacePressed={isSpacePressed}
                 onInteractionActiveChange={setIsCanvasInteractionActive}
@@ -153,7 +155,13 @@ function App() {
             </div>
 
             <FloatingFooter assetCountText={statsText.assetCount} scaleText={statsText.scaleText} />
-            <ToolDock tools={TOOLS} activeTool={state.tool} onSelectTool={(tool) => setState((prev) => setTool(prev, tool))} />
+            <ToolDock
+              tools={TOOLS}
+              activeTool={state.tool}
+              connectorPathMode={connectorPathMode}
+              onSelectTool={(tool) => setState((prev) => setTool(prev, tool))}
+              onSelectConnectorPathMode={setConnectorPathMode}
+            />
           </main>
 
           {isAgentSidebarOpen ? (

@@ -9,6 +9,9 @@
 - [x] 2.1 在 `packages/canvas-engine/src/adapters/` 中新增 connector adapter，并在 `canvas-registry.ts` 注册，使连线进入统一绘制、边界和命中测试链路。
 - [x] 2.2 增加锚点派生与端点解析逻辑，为 `rect`、`text`、`image`、`video` 提供四个边中点锚点位置计算。
 - [x] 2.3 实现连线选中态、端点 handle 与命中容差策略，确保细线对象仍可被稳定选中和编辑。
+- [x] 2.4 扩展 connector 几何模型，支持 `straight | polyline` 路径模式与 `waypoints` 持久化结构。
+- [x] 2.5 为折线 connector 实现多段路径绘制、边界计算与线段级命中测试。
+- [x] 2.6 为折线选中态补充拐点 handle 与对应的视觉反馈。
 
 ## 3. Interaction State Machine
 
@@ -16,6 +19,9 @@
 - [x] 3.2 在 `apps/web/src/canvas/CanvasStage.tsx` 中渲染锚点 hover 提示、连线预览与端点重挂接反馈。
 - [x] 3.3 支持选中 connector 后拖动起点或终点 handle 重新挂接，并在无效释放时回退到原 attachment。
 - [x] 3.4 保证普通节点拖拽和缩放时，关联 connector 根据 attachment 自动更新，而不破坏现有 pan/zoom、selection 和 resize 语义。
+- [x] 3.5 在 connector 工具创建路径中增加折线模式入口，并生成默认折线预览。
+- [x] 3.6 支持选中 polyline connector 后拖动中间拐点 handle 编辑路径。
+- [x] 3.7 保证端点重挂接与拐点编辑可共同工作，且无效编辑时正确回退。
 
 ## 4. Workspace Integration
 
@@ -28,3 +34,5 @@
 - [x] 5.1 添加单元测试，覆盖 connector 数据模型、锚点派生、命中测试、节点删除联动和撤销/重做语义。
 - [x] 5.2 更新 `apps/web/tests/e2e/canvas.spec.ts`，验证连线创建、端点重挂接、节点移动联动和 reload 恢复行为。
 - [x] 5.3 运行 `pnpm test`、`pnpm test:e2e`、`pnpm lint` 和 `pnpm build`，确认锚点连线没有破坏现有画布编辑流程。
+- [x] 5.4 增加单元测试，覆盖折线路径解析、多段命中测试、拐点拖动和 persistence/undo/redo 语义。
+- [x] 5.5 更新 E2E，验证折线 connector 创建、拐点编辑、端点重挂接与 reload 恢复行为。

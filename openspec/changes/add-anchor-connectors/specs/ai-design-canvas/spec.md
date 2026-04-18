@@ -33,6 +33,21 @@ The system SHALL allow users to select a connector and reattach its endpoints th
 - **WHEN** a user drags a selected connector endpoint but releases without hitting a valid anchor
 - **THEN** the system keeps the original endpoint attachment unchanged
 
+### Requirement: Anchored connectors support polyline paths
+The system SHALL allow anchored connectors to be represented and edited as polyline paths with one or more intermediate bend points.
+
+#### Scenario: Create a polyline connector
+- **WHEN** a user creates a connector using the polyline path mode between two valid anchors
+- **THEN** the system creates a connector whose rendered path includes intermediate bend points between the attached endpoints
+
+#### Scenario: Edit polyline bend point
+- **WHEN** a user selects a polyline connector and drags one of its bend point handles
+- **THEN** the system updates that bend point and rerenders the connector path without breaking endpoint attachments
+
+#### Scenario: Polyline connector survives reload
+- **WHEN** a user saves or reloads a board containing polyline connectors
+- **THEN** the system restores the connector path mode and bend points together with its endpoint attachments
+
 ### Requirement: Anchored connectors participate in persistence and history
 The system SHALL persist anchored connectors in the local project document and include their mutations in undo/redo history.
 

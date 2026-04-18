@@ -123,6 +123,11 @@ body {
   touch-action: none;
 }
 
+.canvas-stage-events {
+  position: absolute;
+  inset: 0;
+}
+
 .canvas-ruler-corner,
 .canvas-ruler {
   position: absolute;
@@ -274,6 +279,18 @@ body {
   background: rgba(255, 255, 255, 0.95);
 }
 
+.canvas-connector-handle-waypoint {
+  border-radius: 4px;
+  width: 11px;
+  height: 11px;
+}
+
+.canvas-connector-handle-active {
+  background: rgba(37, 99, 235, 0.95);
+  border-color: rgba(239, 246, 255, 0.92);
+  box-shadow: 0 0 0 2px rgba(219, 234, 254, 0.55);
+}
+
 .canvas-snap-guide {
   position: absolute;
   background: rgba(196, 78, 28, 0.9);
@@ -340,6 +357,7 @@ body {
 
 .floating-header,
 .floating-card,
+.tool-dock-wrap,
 .tool-dock,
 .selection-toolbar,
 .floating-footer,
@@ -348,7 +366,7 @@ body {
 }
 
 .floating-card,
-.tool-dock,
+.tool-dock-wrap,
 .selection-toolbar,
 .floating-footer {
   position: absolute;
@@ -1110,6 +1128,15 @@ body {
   z-index: 3;
 }
 
+.tool-dock-wrap {
+  left: calc(50% - 184px);
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+
 .footer-status {
   align-items: center;
   font-size: 13px;
@@ -1124,14 +1151,42 @@ body {
 }
 
 .tool-dock {
-  left: calc(50% - 184px);
-  bottom: 18px;
-  transform: translateX(-50%);
+  position: static;
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 8px;
   border-radius: 24px;
+}
+
+.connector-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 18px;
+  background: rgba(255, 252, 247, 0.82);
+  border: 1px solid rgba(24, 24, 27, 0.08);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.03),
+    0 12px 28px rgba(15, 23, 42, 0.05);
+  backdrop-filter: blur(16px);
+}
+
+.connector-mode-btn {
+  min-width: 56px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: #4b5563;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.connector-mode-btn.active {
+  background: #171717;
+  color: #fff7ed;
 }
 
 .dock-btn {
@@ -1268,9 +1323,13 @@ body {
   }
 
   .tool-dock {
-    left: 50%;
     width: calc(100vw - 24px);
     justify-content: space-between;
+  }
+
+  .tool-dock-wrap {
+    left: 50%;
+    width: calc(100vw - 24px);
   }
 
   .dock-btn {

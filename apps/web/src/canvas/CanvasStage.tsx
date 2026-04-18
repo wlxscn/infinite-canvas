@@ -1,11 +1,15 @@
 import {
   createCanvasInteractionController,
   createInitialInteractionState,
+  getConnectorWaypointHandles,
+  getDefaultConnectorWaypoints,
   getNodeAnchors,
   getCanvasCursor,
   isInteractionActive,
   isConnectorNode,
   renderScene,
+  type ConnectorHandle,
+  type ConnectorPathMode,
   resolveConnectorPoints,
   worldToScreen,
   type DraftState,
@@ -31,6 +35,7 @@ const RULER_SIZE = 28;
 interface CanvasStageProps {
   project: CanvasProject;
   tool: Tool;
+  connectorPathMode: ConnectorPathMode;
   selectedId: string | null;
   isSpacePressed: boolean;
   onInteractionActiveChange: (active: boolean) => void;
@@ -132,11 +137,13 @@ function CanvasAnchorOverlay({
   tool,
   selectedNode,
   hoveredAnchor,
+  activeConnectorHandle,
 }: {
   board: CanvasProject['board'];
   tool: Tool;
   selectedNode: CanvasNode | null;
   hoveredAnchor: { nodeId: string; anchor: string } | null;
+  activeConnectorHandle: ConnectorHandle | null;
 }) {
   const shouldShowAnchors = tool === 'connector' || (selectedNode ? isConnectorNode(selectedNode) : false);
   const anchors = useMemo(() => {
@@ -165,6 +172,7 @@ function CanvasAnchorOverlay({
     return {
       start: worldToScreen(points.start, board.viewport),
       end: worldToScreen(points.end, board.viewport),
+      waypoints: getConnectorWaypointHandles(selectedNode).map((point) => worldToScreen(point, board.viewport)),
     };
   }, [board, selectedNode]);
 
@@ -191,8 +199,33 @@ function CanvasAnchorOverlay({
 
       {connectorHandles ? (
         <>
-          <div className="canvas-connector-handle" style={{ left: connectorHandles.start.x, top: connectorHandles.start.y }} />
-          <div className="canvas-connector-handle" style={{ left: connectorHandles.end.x, top: connectorHandles.end.y }} />
+          <div
+            className={
+              activeConnectorHandle?.kind === 'endpoint' && activeConnectorHandle.endpoint === 'start'
+                ? 'canvas-connector-handle canvas-connector-handle-active'
+                : 'canvas-connector-handle'
+            }
+            style={{ left: connectorHandles.start.x, top: connectorHandles.start.y }}
+          />
+          {connectorHandles.waypoints.map((point, index) => (
+            <div
+              key={`waypoint-${index}`}
+              className={
+                activeConnectorHandle?.kind === 'waypoint' && activeConnectorHandle.index === index
+                  ? 'canvas-connector-handle canvas-connector-handle-waypoint canvas-connector-handle-active'
+                  : 'canvas-connector-handle canvas-connector-handle-waypoint'
+              }
+              style={{ left: point.x, top: point.y }}
+            />
+          ))}
+          <div
+            className={
+              activeConnectorHandle?.kind === 'endpoint' && activeConnectorHandle.endpoint === 'end'
+                ? 'canvas-connector-handle canvas-connector-handle-active'
+                : 'canvas-connector-handle'
+            }
+            style={{ left: connectorHandles.end.x, top: connectorHandles.end.y }}
+          />
         </>
       ) : null}
     </div>
@@ -202,6 +235,7 @@ function CanvasAnchorOverlay({
 export function CanvasStage({
   project,
   tool,
+  connectorPathMode,
   selectedId,
   isSpacePressed,
   onInteractionActiveChange,
@@ -265,6 +299,7 @@ export function CanvasStage({
       selectedId: initialSelectedIdRef.current,
       getTool: () => toolRef.current,
       isSpacePressed: () => isSpacePressedRef.current,
+      getConnectorPathMode: () => connectorPathMode,
       createRectNode: (point) => ({
         id: createId('node'),
         type: 'rect',
@@ -294,7 +329,7 @@ export function CanvasStage({
         fontSize: 20,
         fontFamily: 'Space Grotesk, Avenir Next, Segoe UI, sans-serif',
       }),
-      createConnectorNode: (anchor, point) => ({
+      createConnectorNode: (anchor, point, pathMode) => ({
         id: createId('node'),
         type: 'connector',
         start: {
@@ -307,6 +342,8 @@ export function CanvasStage({
           x: point.x,
           y: point.y,
         },
+        pathMode,
+        waypoints: pathMode === 'polyline' ? getDefaultConnectorWaypoints(anchor.point, point, anchor.anchor) : [],
         stroke: '#c44e1c',
         width: 2,
       }),
@@ -329,7 +366,7 @@ export function CanvasStage({
       controller.dispose();
       controllerRef.current = null;
     };
-  }, [renderProjectNow]);
+  }, [connectorPathMode, renderProjectNow]);
 
   useEffect(() => {
     controllerRef.current?.syncProject(project);
@@ -388,7 +425,7 @@ export function CanvasStage({
     [],
   );
 
-  const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLCanvasElement>): void => {
+  const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>): void => {
     event.currentTarget.setPointerCapture(event.pointerId);
     controllerRef.current?.handlePointerDown({
       screenPoint: getEventPoint(event),
@@ -398,7 +435,7 @@ export function CanvasStage({
     });
   }, [getEventPoint]);
 
-  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLCanvasElement>): void => {
+  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>): void => {
     controllerRef.current?.handlePointerMove({
       screenPoint: getEventPoint(event),
       pointerId: event.pointerId,
@@ -407,7 +444,7 @@ export function CanvasStage({
     });
   }, [getEventPoint]);
 
-  const handlePointerUp = useCallback((event: ReactPointerEvent<HTMLCanvasElement>): void => {
+  const handlePointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>): void => {
     controllerRef.current?.handlePointerUp({
       screenPoint: getEventPoint(event),
       pointerId: event.pointerId,
@@ -439,20 +476,22 @@ export function CanvasStage({
       <CanvasRuler axis="horizontal" model={rulerModel.horizontal} />
       <CanvasRuler axis="vertical" model={rulerModel.vertical} />
       <div className="canvas-stage-content">
-        <canvas
-          ref={canvasRef}
-          className="canvas-surface"
+        <div
+          className="canvas-stage-events"
           style={{ cursor }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
-        />
+        >
+          <canvas ref={canvasRef} className="canvas-surface" />
+        </div>
         <CanvasAnchorOverlay
           board={project.board}
           tool={tool}
           selectedNode={selectedNode}
           hoveredAnchor={interactionState.hoveredAnchor}
+          activeConnectorHandle={interactionState.activeConnectorHandle}
         />
         <CanvasSnapGuides guides={interactionState.snapGuides} />
         <VideoOverlayLayer board={project.board} assets={project.assets} selectedId={selectedId} />

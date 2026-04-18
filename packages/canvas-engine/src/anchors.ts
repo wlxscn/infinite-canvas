@@ -6,6 +6,7 @@ import type {
   BoxNode,
   CanvasNode,
   ConnectorEndpoint,
+  ConnectorPathMode,
   ConnectorNode,
   Point,
 } from './model';
@@ -26,6 +27,17 @@ export function isBoxNode(node: CanvasNode): node is BoxNode {
 
 export function isConnectorNode(node: CanvasNode): node is ConnectorNode {
   return node.type === 'connector';
+}
+
+export function getConnectorPathMode(node: ConnectorNode): ConnectorPathMode {
+  if (node.pathMode) {
+    return node.pathMode;
+  }
+  return node.waypoints && node.waypoints.length > 0 ? 'polyline' : 'straight';
+}
+
+export function getConnectorWaypointHandles(node: ConnectorNode): Point[] {
+  return getConnectorPathMode(node) === 'polyline' ? [...(node.waypoints ?? [])] : [];
 }
 
 export function isAttachedConnectorEndpoint(endpoint: ConnectorEndpoint): endpoint is AttachedConnectorEndpoint {
@@ -110,6 +122,32 @@ export function resolveConnectorPoints(node: ConnectorNode, board: BoardDoc): { 
   }
 
   return { start, end };
+}
+
+export function resolveConnectorPathPoints(node: ConnectorNode, board: BoardDoc): Point[] | null {
+  const points = resolveConnectorPoints(node, board);
+  if (!points) {
+    return null;
+  }
+
+  if (getConnectorPathMode(node) === 'straight') {
+    return [points.start, points.end];
+  }
+
+  return [points.start, ...getConnectorWaypointHandles(node), points.end];
+}
+
+export function getDefaultConnectorWaypoints(
+  start: Point,
+  end: Point,
+  startAnchor?: AnchorId,
+  _endAnchor?: AnchorId,
+): Point[] {
+  if (startAnchor === 'north' || startAnchor === 'south') {
+    return [{ x: start.x, y: end.y }];
+  }
+
+  return [{ x: end.x, y: start.y }];
 }
 
 export function isConnectorAttachedToNode(node: ConnectorNode, nodeId: string): boolean {

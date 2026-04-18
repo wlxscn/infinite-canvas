@@ -1,4 +1,4 @@
-import { isConnectorNode, resolveConnectorPoints } from './anchors';
+import { isConnectorNode, resolveConnectorPathPoints } from './anchors';
 import { createCanvasRenderRuntime } from './runtime';
 import { drawCanvasNode, getCanvasNodeBounds } from './canvas-registry';
 import { normalizeBounds } from './geometry';
@@ -18,13 +18,12 @@ interface RenderOptions {
 
 function drawSelectionOutline(ctx: CanvasRenderingContext2D, node: CanvasNode, board: BoardDoc): void {
   if (isConnectorNode(node)) {
-    const points = resolveConnectorPoints(node, board);
+    const points = resolveConnectorPathPoints(node, board);
     if (!points) {
       return;
     }
 
-    const start = worldToScreen(points.start, board.viewport);
-    const end = worldToScreen(points.end, board.viewport);
+    const screenPoints = points.map((point) => worldToScreen(point, board.viewport));
     const radius = 6;
 
     ctx.save();
@@ -32,14 +31,16 @@ function drawSelectionOutline(ctx: CanvasRenderingContext2D, node: CanvasNode, b
     ctx.lineWidth = 2;
     ctx.setLineDash([8, 4]);
     ctx.beginPath();
-    ctx.moveTo(start.x, start.y);
-    ctx.lineTo(end.x, end.y);
+    ctx.moveTo(screenPoints[0].x, screenPoints[0].y);
+    for (const point of screenPoints.slice(1)) {
+      ctx.lineTo(point.x, point.y);
+    }
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#2563eb';
     ctx.lineWidth = 1.5;
-    for (const point of [start, end]) {
+    for (const point of screenPoints) {
       ctx.beginPath();
       ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
       ctx.fill();

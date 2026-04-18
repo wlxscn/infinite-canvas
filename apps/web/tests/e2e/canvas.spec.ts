@@ -402,6 +402,64 @@ test('connector tool creates anchored connectors, supports reattachment, and per
   expect(connector.end).toEqual({ kind: 'attached', nodeId: 'node_rect_c', anchor: 'west' });
 });
 
+test('polyline connector mode exposes bend handles, supports reattachment, and restores after reload', async ({ page }) => {
+  await page.addInitScript(([storageKey, project]) => {
+    if (window.sessionStorage.getItem('__seeded_project__') === 'true') {
+      return;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(project));
+    window.sessionStorage.setItem('__seeded_project__', 'true');
+  }, [STORAGE_KEY, createConnectorSeedProject()]);
+
+  await page.goto('/');
+
+  const canvas = page.locator('canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+
+  if (!box) {
+    return;
+  }
+
+  await page.getByRole('button', { name: '连线' }).click();
+  await page.getByRole('button', { name: '折线' }).click();
+  await page.mouse.move(box.x + 180, box.y + 90);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 320, box.y + 110, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+
+  let project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  let connector = project.board.nodes.find((node: { type: string }) => node.type === 'connector');
+  expect(connector).toBeTruthy();
+  expect(connector.pathMode).toBe('polyline');
+  expect(connector.waypoints).toHaveLength(1);
+  expect(connector.waypoints[0]).toEqual({ x: 320, y: 90 });
+
+  await page.getByRole('button', { name: '选择' }).click();
+  await page.mouse.click(box.x + 250, box.y + 90);
+  const waypointHandle = page.locator('.canvas-connector-handle-waypoint').first();
+  await expect(waypointHandle).toBeVisible();
+
+  await page.mouse.move(box.x + 320, box.y + 110);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 320, box.y + 290, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+
+  project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  connector = project.board.nodes.find((node: { type: string }) => node.type === 'connector');
+  expect(connector.end).toEqual({ kind: 'attached', nodeId: 'node_rect_c', anchor: 'west' });
+  expect(connector.waypoints[0]).toEqual({ x: 320, y: 90 });
+
+  await page.reload();
+  project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  connector = project.board.nodes.find((node: { type: string }) => node.type === 'connector');
+  expect(connector.pathMode).toBe('polyline');
+  expect(connector.waypoints[0]).toEqual({ x: 320, y: 90 });
+  expect(connector.end).toEqual({ kind: 'attached', nodeId: 'node_rect_c', anchor: 'west' });
+});
+
 test('rect, freehand, text, and media nodes remain available after engine-backed dispatch', async ({ page }) => {
   await page.addInitScript(([storageKey, project]) => {
     window.localStorage.setItem(storageKey, JSON.stringify(project));

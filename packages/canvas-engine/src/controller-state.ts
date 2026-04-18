@@ -8,6 +8,7 @@ export type PointerMode =
   | 'drawing-freehand'
   | 'drawing-connector'
   | 'editing-connector-end'
+  | 'editing-connector-waypoint'
   | 'resizing-node'
   | 'pinch';
 
@@ -22,6 +23,10 @@ export interface HoveredAnchor {
   anchor: AnchorId;
 }
 
+export type ConnectorHandle =
+  | { kind: 'endpoint'; endpoint: 'start' | 'end' }
+  | { kind: 'waypoint'; index: number };
+
 export interface SnapGuide {
   axis: 'x' | 'y';
   screenPosition: number;
@@ -35,7 +40,7 @@ export interface CanvasInteractionState extends DraftState {
   isWheelInteractionActive: boolean;
   snapGuides: SnapGuide[];
   hoveredAnchor: HoveredAnchor | null;
-  activeConnectorHandle: 'start' | 'end' | null;
+  activeConnectorHandle: ConnectorHandle | null;
 }
 
 export function createInitialInteractionState(): CanvasInteractionState {
@@ -53,12 +58,13 @@ export function createInitialInteractionState(): CanvasInteractionState {
 
 export function isActiveInteractionMode(mode: PointerMode): boolean {
   return (
-    mode === 'panning' ||
-    mode === 'dragging-node' ||
-    mode === 'drawing-connector' ||
-    mode === 'editing-connector-end' ||
-    mode === 'resizing-node' ||
-    mode === 'pinch'
+      mode === 'panning' ||
+      mode === 'dragging-node' ||
+      mode === 'drawing-connector' ||
+      mode === 'editing-connector-end' ||
+      mode === 'editing-connector-waypoint' ||
+      mode === 'resizing-node' ||
+      mode === 'pinch'
   );
 }
 

@@ -10,13 +10,18 @@ import {
   hitCanvasNodeResizeHandle,
   hitTestCanvasNode,
   resizeCanvasNode,
+  resolveConnectorPathPoints,
   resolveConnectorPoints,
   translateCanvasNode,
 } from '@infinite-canvas/canvas-engine';
 import { createEmptyProject, getNodeById, removeNodeById, upsertNode } from '../../src/state/store';
 import type { CanvasNode } from '../../src/types/canvas';
 
-function createDraftConnector(anchor: { nodeId: string; anchor: 'north' | 'east' | 'south' | 'west'; point: { x: number; y: number } }) {
+function createDraftConnector(
+  anchor: { nodeId: string; anchor: 'north' | 'east' | 'south' | 'west'; point: { x: number; y: number } },
+  point = anchor.point,
+  pathMode: 'straight' | 'polyline' = 'straight',
+) {
   return {
     id: 'draft_connector',
     type: 'connector' as const,
@@ -27,9 +32,11 @@ function createDraftConnector(anchor: { nodeId: string; anchor: 'north' | 'east'
     },
     end: {
       kind: 'free' as const,
-      x: anchor.point.x,
-      y: anchor.point.y,
+      x: point.x,
+      y: point.y,
     },
+    pathMode,
+    waypoints: pathMode === 'polyline' ? [{ x: point.x, y: anchor.point.y }] : [],
     stroke: '#c44e1c',
     width: 2,
   };
@@ -218,6 +225,47 @@ describe('canvas engine', () => {
     expect(removeNodeById(board.nodes, 'rect_a').map((node) => node.id)).toEqual(['rect_b']);
   });
 
+  it('resolves polyline connector paths and supports multi-segment hit testing', () => {
+    const connector: CanvasNode = {
+      id: 'connector_polyline',
+      type: 'connector',
+      start: {
+        kind: 'free',
+        x: 40,
+        y: 40,
+      },
+      end: {
+        kind: 'free',
+        x: 220,
+        y: 180,
+      },
+      pathMode: 'polyline',
+      waypoints: [{ x: 220, y: 40 }],
+      stroke: '#c44e1c',
+      width: 2,
+    };
+    const board = {
+      version: 2 as const,
+      viewport: { tx: 0, ty: 0, scale: 1 },
+      nodes: [connector],
+    };
+
+    expect(resolveConnectorPathPoints(connector, board)).toEqual([
+      { x: 40, y: 40 },
+      { x: 220, y: 40 },
+      { x: 220, y: 180 },
+    ]);
+    expect(getCanvasNodeBounds(connector, board)).toEqual({
+      x: 40,
+      y: 40,
+      w: 180,
+      h: 140,
+    });
+    expect(hitTestCanvasNode(connector, { x: 160, y: 40 }, 4, board)).toBe(true);
+    expect(hitTestCanvasNode(connector, { x: 220, y: 120 }, 4, board)).toBe(true);
+    expect(hitTestCanvasNode(connector, { x: 150, y: 120 }, 4, board)).toBe(false);
+  });
+
   it('recreates runtime asset lookup data from project assets without mutating persisted project state', () => {
     const project = createEmptyProject();
     project.assets.push({
@@ -309,6 +357,7 @@ describe('canvas engine', () => {
       selectedId: 'node_rect_1',
       getTool: () => 'select',
       isSpacePressed: () => false,
+      getConnectorPathMode: () => 'straight',
       createRectNode: (point) => ({
         id: 'draft_rect',
         type: 'rect',
@@ -483,6 +532,7 @@ describe('canvas engine', () => {
       selectedId: 'node_rect_1',
       getTool: () => 'select',
       isSpacePressed: () => false,
+      getConnectorPathMode: () => 'straight',
       createRectNode: (point) => ({
         id: 'draft_rect',
         type: 'rect',
@@ -605,6 +655,7 @@ describe('canvas engine', () => {
       selectedId: null,
       getTool: () => 'connector',
       isSpacePressed: () => false,
+      getConnectorPathMode: () => 'straight',
       createRectNode: (point) => ({
         id: 'draft_rect',
         type: 'rect',
@@ -678,6 +729,7 @@ describe('canvas engine', () => {
       selectedId: 'draft_connector',
       getTool: () => 'select',
       isSpacePressed: () => false,
+      getConnectorPathMode: () => 'straight',
       createRectNode: (point) => ({
         id: 'draft_rect',
         type: 'rect',
@@ -745,6 +797,182 @@ describe('canvas engine', () => {
     expect(resolveConnectorPoints(reattachedConnector, reattachedProject.board)?.end).toEqual({ x: 300, y: 290 });
 
     controller.dispose();
+    reattachController.dispose();
+  });
+
+  it('creates polyline connectors and updates waypoint handles through the controller', () => {
+    const base = createEmptyProject();
+    const project = {
+      ...base,
+      board: {
+        ...base.board,
+        nodes: [
+          {
+            id: 'node_rect_a',
+            type: 'rect' as const,
+            x: 40,
+            y: 40,
+            w: 120,
+            h: 80,
+            stroke: '#000',
+          },
+          {
+            id: 'node_rect_b',
+            type: 'rect' as const,
+            x: 300,
+            y: 60,
+            w: 140,
+            h: 100,
+            stroke: '#000',
+          },
+          {
+            id: 'node_rect_c',
+            type: 'rect' as const,
+            x: 300,
+            y: 240,
+            w: 140,
+            h: 100,
+            stroke: '#000',
+          },
+        ],
+      },
+    };
+
+    const onSelect = vi.fn();
+    const onReplaceProject = vi.fn();
+    const onCommitProject = vi.fn();
+    const onFinalizeMutation = vi.fn();
+
+    const createController = (nextProject: typeof project, selectedId: string | null, tool: 'select' | 'connector') =>
+      createCanvasInteractionController({
+        project: nextProject,
+        selectedId,
+        getTool: () => tool,
+        isSpacePressed: () => false,
+        getConnectorPathMode: () => 'polyline',
+        createRectNode: (point) => ({
+          id: 'draft_rect',
+          type: 'rect',
+          x: point.x,
+          y: point.y,
+          w: 0,
+          h: 0,
+          stroke: '#000',
+        }),
+        createFreehandNode: (point) => ({
+          id: 'draft_line',
+          type: 'freehand',
+          points: [point],
+          stroke: '#000',
+          width: 2,
+        }),
+        createTextNode: (point) => ({
+          id: 'draft_text',
+          type: 'text',
+          x: point.x,
+          y: point.y,
+          w: 100,
+          h: 50,
+          text: 'text',
+          color: '#000',
+          fontSize: 16,
+          fontFamily: 'sans-serif',
+        }),
+        createConnectorNode: createDraftConnector,
+        getNodeById,
+        upsertNode,
+        onSelect,
+        onReplaceProject,
+        onCommitProject,
+        onFinalizeMutation,
+        render: () => {},
+        requestAnimationFrame: (() => 1) as typeof window.requestAnimationFrame,
+        cancelAnimationFrame: (() => {}) as typeof window.cancelAnimationFrame,
+      });
+
+    const controller = createController(project, null, 'connector');
+
+    controller.handlePointerDown({
+      screenPoint: { x: 160, y: 80 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    controller.handlePointerMove({
+      screenPoint: { x: 300, y: 110 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    controller.handlePointerUp({
+      screenPoint: { x: 300, y: 110 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+
+    const createdProject = onCommitProject.mock.calls[0][0];
+    const polylineConnector = createdProject.board.nodes.find((node: CanvasNode) => node.id === 'draft_connector');
+    expect(polylineConnector).toMatchObject({
+      pathMode: 'polyline',
+      waypoints: [{ x: 300, y: 80 }],
+    });
+
+    const waypointController = createController(createdProject, 'draft_connector', 'select');
+    waypointController.handlePointerDown({
+      screenPoint: { x: 300, y: 80 },
+      pointerId: 2,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    waypointController.handlePointerMove({
+      screenPoint: { x: 240, y: 180 },
+      pointerId: 2,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    waypointController.handlePointerUp({
+      screenPoint: { x: 240, y: 180 },
+      pointerId: 2,
+      pointerType: 'mouse',
+      button: 0,
+    });
+
+    const waypointEditedProject = onCommitProject.mock.calls[1][0];
+    const waypointEditedConnector = waypointEditedProject.board.nodes.find((node: CanvasNode) => node.id === 'draft_connector');
+    expect(waypointEditedConnector).toMatchObject({
+      waypoints: [{ x: 240, y: 180 }],
+    });
+
+    const reattachController = createController(waypointEditedProject, 'draft_connector', 'select');
+    reattachController.handlePointerDown({
+      screenPoint: { x: 300, y: 110 },
+      pointerId: 3,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    reattachController.handlePointerMove({
+      screenPoint: { x: 300, y: 290 },
+      pointerId: 3,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    reattachController.handlePointerUp({
+      screenPoint: { x: 300, y: 290 },
+      pointerId: 3,
+      pointerType: 'mouse',
+      button: 0,
+    });
+
+    const reattachedProject = onCommitProject.mock.calls[2][0];
+    const reattachedConnector = reattachedProject.board.nodes.find((node: CanvasNode) => node.id === 'draft_connector');
+    expect(reattachedConnector).toMatchObject({
+      end: { kind: 'attached', nodeId: 'node_rect_c', anchor: 'west' },
+      waypoints: [{ x: 240, y: 180 }],
+    });
+
+    controller.dispose();
+    waypointController.dispose();
     reattachController.dispose();
   });
 });

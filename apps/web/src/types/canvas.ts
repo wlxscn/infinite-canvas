@@ -9,6 +9,7 @@ export type {
   CanvasNode,
   ConnectorEndpoint,
   ConnectorNode,
+  ConnectorPathMode,
   FreeConnectorEndpoint,
   FreehandNode,
   ImageNode,
