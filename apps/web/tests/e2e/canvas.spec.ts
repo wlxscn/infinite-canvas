@@ -137,11 +137,13 @@ test('can persist seeded sidebar sessions and local asset interactions after rel
 
   await page.goto('/');
 
+  await expect(page.getByRole('complementary', { name: '素材管理侧栏' })).toBeVisible();
   await expect(page.getByRole('complementary', { name: 'Agent chat sidebar' })).toBeVisible();
   await expect(page.getByRole('button', { name: '主会话 1 条消息' })).toBeVisible();
   await expect(page.getByText(/资产 1/).first()).toBeVisible();
+  await expect(page.getByText('先定一张主画面')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Seed image' }).click();
+  await page.getByRole('button', { name: /Seed image/ }).click();
   await expect(page.getByText(/节点 1/)).toBeVisible();
   await expect(page.getByText('保留这个方向')).toBeVisible();
 
@@ -158,6 +160,23 @@ test('can persist seeded sidebar sessions and local asset interactions after rel
   await expect(page.getByText(/资产 1/).first()).toBeVisible();
   await expect(sessionItems).toHaveCount(2);
   await expect(page.getByText('保留这个方向')).toBeVisible();
+});
+
+test('asset sidebar can collapse and expand without hiding the canvas workspace', async ({ page }) => {
+  await page.addInitScript(([storageKey, project]) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(project));
+    window.sessionStorage.setItem('__seeded_project__', 'true');
+  }, [STORAGE_KEY, createSeedProject()]);
+
+  await page.goto('/');
+
+  await expect(page.getByRole('complementary', { name: '素材管理侧栏' })).toBeVisible();
+  await page.getByRole('button', { name: '收起素材栏' }).click();
+  await expect(page.getByRole('button', { name: /展开/i })).toBeVisible();
+  await expect(page.locator('canvas')).toBeVisible();
+
+  await page.getByRole('button', { name: /展开/i }).click();
+  await expect(page.getByRole('button', { name: '导入参考图' })).toBeVisible();
 });
 
 test('can export project json', async ({ page }) => {
@@ -180,7 +199,8 @@ test('rulers stay visible and react to selection and zoom changes', async ({ pag
   }, [STORAGE_KEY, createSeedProject()]);
 
   await page.goto('/');
-  await page.getByRole('button', { name: 'Seed image' }).click();
+  await expect(page.getByPlaceholder('例如：生成一张极简科技海报，或把当前标题改得更大胆')).toBeVisible();
+  await page.getByRole('button', { name: /Seed image/ }).click();
   await expect(page.getByText(/节点 1/)).toBeVisible();
   await expect(page.locator('.canvas-ruler-top')).toBeVisible();
   await expect(page.locator('.canvas-ruler-left')).toBeVisible();
