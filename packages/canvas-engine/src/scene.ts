@@ -11,41 +11,38 @@ interface RenderOptions {
   board: BoardDoc;
   assets: CanvasAssetRecord[];
   selectedId: string | null;
+  hoveredId: string | null;
   draftRect: RectNode | null;
   draftFreehand: FreehandNode | null;
   draftConnector: ConnectorNode | null;
 }
 
-function drawSelectionOutline(ctx: CanvasRenderingContext2D, node: CanvasNode, board: BoardDoc): void {
+function drawNodeChrome(
+  ctx: CanvasRenderingContext2D,
+  node: CanvasNode,
+  board: BoardDoc,
+  state: 'hovered' | 'selected',
+): void {
+  const strokeStyle = state === 'selected' ? '#2563eb' : 'rgba(196, 78, 28, 0.72)';
+  const connectorLineWidth = state === 'selected' ? 2 : 1.5;
+  const rectLineWidth = state === 'selected' ? 1.5 : 1.25;
+
   if (isConnectorNode(node)) {
     const points = resolveConnectorPathPoints(node, board);
     if (!points) {
       return;
     }
 
-    const screenPoints = points.map((point) => worldToScreen(point, board.viewport));
-    const radius = 6;
-
     ctx.save();
-    ctx.strokeStyle = '#2563eb';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([8, 4]);
+    ctx.strokeStyle = strokeStyle;
+    ctx.lineWidth = connectorLineWidth;
     ctx.beginPath();
+    const screenPoints = points.map((point) => worldToScreen(point, board.viewport));
     ctx.moveTo(screenPoints[0].x, screenPoints[0].y);
     for (const point of screenPoints.slice(1)) {
       ctx.lineTo(point.x, point.y);
     }
     ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = '#2563eb';
-    ctx.lineWidth = 1.5;
-    for (const point of screenPoints) {
-      ctx.beginPath();
-      ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    }
     ctx.restore();
     return;
   }
@@ -57,22 +54,22 @@ function drawSelectionOutline(ctx: CanvasRenderingContext2D, node: CanvasNode, b
   const handle = 10;
 
   ctx.save();
-  ctx.strokeStyle = '#0f172a';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([8, 4]);
+  ctx.strokeStyle = strokeStyle;
+  ctx.lineWidth = rectLineWidth;
   ctx.strokeRect(p.x - 4, p.y - 4, w + 8, h + 8);
-  ctx.setLineDash([]);
-  ctx.fillStyle = '#ffffff';
-  ctx.strokeStyle = '#2563eb';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.rect(p.x + w - handle / 2, p.y + h - handle / 2, handle, handle);
-  ctx.fill();
-  ctx.stroke();
+  if (state === 'selected') {
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#2563eb';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.rect(p.x + w - handle / 2, p.y + h - handle / 2, handle, handle);
+    ctx.fill();
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
-export function renderScene({ canvas, board, assets, selectedId, draftRect, draftFreehand, draftConnector }: RenderOptions): void {
+export function renderScene({ canvas, board, assets, selectedId, hoveredId, draftRect, draftFreehand, draftConnector }: RenderOptions): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) {
     return;
@@ -93,7 +90,7 @@ export function renderScene({ canvas, board, assets, selectedId, draftRect, draf
   ctx.fillRect(0, 0, width, height);
 
   const rerender = () => {
-    renderScene({ canvas, board, assets, selectedId, draftRect, draftFreehand, draftConnector });
+    renderScene({ canvas, board, assets, selectedId, hoveredId, draftRect, draftFreehand, draftConnector });
   };
   const runtime = createCanvasRenderRuntime(assets);
 
@@ -113,9 +110,14 @@ export function renderScene({ canvas, board, assets, selectedId, draftRect, draf
     drawCanvasNode(ctx, draftConnector, { board, runtime, rerender });
   }
 
+  const hoveredNode = board.nodes.find((node) => node.id === hoveredId && node.id !== selectedId);
+  if (hoveredNode) {
+    drawNodeChrome(ctx, hoveredNode, board, 'hovered');
+  }
+
   const selectedNode = board.nodes.find((node) => node.id === selectedId);
   if (selectedNode) {
-    drawSelectionOutline(ctx, selectedNode, board);
+    drawNodeChrome(ctx, selectedNode, board, 'selected');
   }
 }
 

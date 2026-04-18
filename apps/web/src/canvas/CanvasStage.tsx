@@ -10,9 +10,9 @@ import {
   renderScene,
   type ConnectorHandle,
   type ConnectorPathMode,
+  type CanvasInteractionState,
   resolveConnectorPoints,
   worldToScreen,
-  type DraftState,
   type CanvasInteractionController,
   type SnapGuide,
 } from '@infinite-canvas/canvas-engine';
@@ -135,17 +135,21 @@ function CanvasSnapGuides({ guides }: { guides: SnapGuide[] }) {
 function CanvasAnchorOverlay({
   board,
   tool,
+  pointerMode,
   selectedNode,
   hoveredAnchor,
   activeConnectorHandle,
 }: {
   board: CanvasProject['board'];
   tool: Tool;
+  pointerMode: CanvasInteractionState['pointerMode'];
   selectedNode: CanvasNode | null;
   hoveredAnchor: { nodeId: string; anchor: string } | null;
   activeConnectorHandle: ConnectorHandle | null;
 }) {
-  const shouldShowAnchors = tool === 'connector' || (selectedNode ? isConnectorNode(selectedNode) : false);
+  const isConnectorEditing =
+    pointerMode === 'editing-connector-end' || pointerMode === 'editing-connector-waypoint';
+  const shouldShowAnchors = tool === 'connector' || pointerMode === 'drawing-connector' || pointerMode === 'editing-connector-end';
   const anchors = useMemo(() => {
     if (!shouldShowAnchors) {
       return [];
@@ -160,7 +164,7 @@ function CanvasAnchorOverlay({
   }, [board.nodes, board.viewport, shouldShowAnchors]);
 
   const connectorHandles = useMemo(() => {
-    if (!selectedNode || !isConnectorNode(selectedNode)) {
+    if (!selectedNode || !isConnectorNode(selectedNode) || !isConnectorEditing) {
       return null;
     }
 
@@ -174,7 +178,7 @@ function CanvasAnchorOverlay({
       end: worldToScreen(points.end, board.viewport),
       waypoints: getConnectorWaypointHandles(selectedNode).map((point) => worldToScreen(point, board.viewport)),
     };
-  }, [board, selectedNode]);
+  }, [board, isConnectorEditing, selectedNode]);
 
   if (!shouldShowAnchors && !connectorHandles) {
     return null;
@@ -259,7 +263,7 @@ export function CanvasStage({
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   const renderProjectNow = useCallback(
-    (nextProject: CanvasProject, selectedNodeId: string | null, state: DraftState): void => {
+    (nextProject: CanvasProject, selectedNodeId: string | null, state: CanvasInteractionState): void => {
       const canvas = canvasRef.current;
       if (!canvas) {
         return;
@@ -270,6 +274,7 @@ export function CanvasStage({
         board: nextProject.board,
         assets: nextProject.assets,
         selectedId: selectedNodeId,
+        hoveredId: state.hoveredNodeId,
         draftRect: state.draftRect,
         draftFreehand: state.draftFreehand,
         draftConnector: state.draftConnector,
@@ -489,12 +494,18 @@ export function CanvasStage({
         <CanvasAnchorOverlay
           board={project.board}
           tool={tool}
+          pointerMode={interactionState.pointerMode}
           selectedNode={selectedNode}
           hoveredAnchor={interactionState.hoveredAnchor}
           activeConnectorHandle={interactionState.activeConnectorHandle}
         />
         <CanvasSnapGuides guides={interactionState.snapGuides} />
-        <VideoOverlayLayer board={project.board} assets={project.assets} selectedId={selectedId} />
+        <VideoOverlayLayer
+          board={project.board}
+          assets={project.assets}
+          selectedId={selectedId}
+          hoveredId={interactionState.hoveredNodeId}
+        />
       </div>
     </div>
   );

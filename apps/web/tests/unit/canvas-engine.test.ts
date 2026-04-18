@@ -607,6 +607,120 @@ describe('canvas engine', () => {
     controller.dispose();
   });
 
+  it('tracks hovered top-hit nodes only while idle in select mode', () => {
+    const base = createEmptyProject();
+    const project = {
+      ...base,
+      board: {
+        ...base.board,
+        nodes: [
+          {
+            id: 'node_rect_back',
+            type: 'rect' as const,
+            x: 40,
+            y: 40,
+            w: 180,
+            h: 120,
+            stroke: '#000',
+          },
+          {
+            id: 'node_rect_front',
+            type: 'rect' as const,
+            x: 80,
+            y: 70,
+            w: 140,
+            h: 100,
+            stroke: '#000',
+          },
+        ],
+      },
+    };
+
+    const controller = createCanvasInteractionController({
+      project,
+      selectedId: null,
+      getTool: () => 'select',
+      isSpacePressed: () => false,
+      getConnectorPathMode: () => 'straight',
+      createRectNode: (point) => ({
+        id: 'draft_rect',
+        type: 'rect',
+        x: point.x,
+        y: point.y,
+        w: 0,
+        h: 0,
+        stroke: '#000',
+      }),
+      createFreehandNode: (point) => ({
+        id: 'draft_line',
+        type: 'freehand',
+        points: [point],
+        stroke: '#000',
+        width: 2,
+      }),
+      createTextNode: (point) => ({
+        id: 'draft_text',
+        type: 'text',
+        x: point.x,
+        y: point.y,
+        w: 100,
+        h: 50,
+        text: 'text',
+        color: '#000',
+        fontSize: 16,
+        fontFamily: 'sans-serif',
+      }),
+      createConnectorNode: createDraftConnector,
+      getNodeById,
+      upsertNode,
+      onSelect: vi.fn(),
+      onReplaceProject: vi.fn(),
+      onCommitProject: vi.fn(),
+      onFinalizeMutation: vi.fn(),
+      render: vi.fn(),
+      requestAnimationFrame: (() => 1) as typeof window.requestAnimationFrame,
+      cancelAnimationFrame: (() => {}) as typeof window.cancelAnimationFrame,
+    });
+
+    controller.handlePointerMove({
+      screenPoint: { x: 120, y: 100 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    expect(controller.getState().hoveredNodeId).toBe('node_rect_front');
+
+    controller.handlePointerDown({
+      screenPoint: { x: 120, y: 100 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    controller.handlePointerMove({
+      screenPoint: { x: 140, y: 120 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    expect(controller.getState().hoveredNodeId).toBeNull();
+
+    controller.handlePointerUp({
+      screenPoint: { x: 140, y: 120 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    controller.handlePointerMove({
+      screenPoint: { x: 10, y: 10 },
+      pointerId: 2,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    expect(controller.getState().hoveredNodeId).toBeNull();
+
+    controller.dispose();
+  });
+
   it('creates and reattaches connectors through the controller interaction state', () => {
     const base = createEmptyProject();
     const project = {

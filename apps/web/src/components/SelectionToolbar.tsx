@@ -14,7 +14,12 @@ export function SelectionToolbar({ selectedNode, board, style, onMoveBackward, o
   const bounds = normalizeBounds(getCanvasNodeBounds(selectedNode, board));
 
   return (
-    <section className="selection-toolbar" style={style}>
+    <section
+      className="selection-toolbar"
+      style={style}
+      aria-label="选中对象工具栏"
+      data-node-type={selectedNode.type}
+    >
       <div className="selection-pill">
         <span>{selectedNode.type}</span>
       </div>

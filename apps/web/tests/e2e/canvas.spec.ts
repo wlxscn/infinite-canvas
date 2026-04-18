@@ -161,6 +161,54 @@ function createConnectorSeedProject() {
   return project;
 }
 
+function createSelectionChromeSeedProject() {
+  const project = createSeedProject();
+  project.assets.push({
+    id: 'asset_video_seed',
+    type: 'video',
+    name: 'Seed video',
+    mimeType: 'video/mp4',
+    src: 'data:video/mp4;base64,AAAA',
+    posterSrc: null,
+    width: 1280,
+    height: 720,
+    origin: 'generated',
+    createdAt: 2,
+  });
+  project.board.nodes = [
+    {
+      id: 'node_rect_seed',
+      type: 'rect',
+      x: 60,
+      y: 60,
+      w: 160,
+      h: 110,
+      stroke: '#111827',
+      fill: 'rgba(59, 130, 246, 0.2)',
+    },
+    {
+      id: 'node_video_seed',
+      type: 'video',
+      x: 280,
+      y: 80,
+      w: 180,
+      h: 120,
+      assetId: 'asset_video_seed',
+    },
+    {
+      id: 'node_rect_target',
+      type: 'rect',
+      x: 520,
+      y: 90,
+      w: 150,
+      h: 110,
+      stroke: '#111827',
+      fill: 'rgba(20, 184, 166, 0.18)',
+    },
+  ];
+  return project;
+}
+
 test('can persist seeded sidebar sessions and local asset interactions after reload', async ({ page }) => {
   const sessionItems = page.locator('.agent-session-item');
 
@@ -439,10 +487,11 @@ test('polyline connector mode exposes bend handles, supports reattachment, and r
   await page.getByRole('button', { name: '选择' }).click();
   await page.mouse.click(box.x + 250, box.y + 90);
   const waypointHandle = page.locator('.canvas-connector-handle-waypoint').first();
-  await expect(waypointHandle).toBeVisible();
+  await expect(waypointHandle).toHaveCount(0);
 
   await page.mouse.move(box.x + 320, box.y + 110);
   await page.mouse.down();
+  await expect(waypointHandle).toBeVisible();
   await page.mouse.move(box.x + 320, box.y + 290, { steps: 10 });
   await page.mouse.up();
   await page.waitForTimeout(250);
@@ -458,6 +507,50 @@ test('polyline connector mode exposes bend handles, supports reattachment, and r
   expect(connector.pathMode).toBe('polyline');
   expect(connector.waypoints[0]).toEqual({ x: 320, y: 90 });
   expect(connector.end).toEqual({ kind: 'attached', nodeId: 'node_rect_c', anchor: 'west' });
+});
+
+test('hover and selected chrome stay lightweight until connector editing becomes active', async ({ page }) => {
+  await page.addInitScript(([storageKey, project]) => {
+    if (window.sessionStorage.getItem('__seeded_project__') === 'true') {
+      return;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(project));
+    window.sessionStorage.setItem('__seeded_project__', 'true');
+  }, [STORAGE_KEY, createSelectionChromeSeedProject()]);
+
+  await page.goto('/');
+
+  const canvas = page.locator('canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+
+  if (!box) {
+    return;
+  }
+
+  const videoOverlay = page.locator('.video-overlay-item').first();
+  await page.mouse.move(box.x + 320, box.y + 120);
+  await expect(videoOverlay).toHaveClass(/video-overlay-item-hovered/);
+
+  await page.mouse.click(box.x + 320, box.y + 120);
+  await expect(videoOverlay).toHaveClass(/video-overlay-item-selected/);
+  await expect(page.getByLabel('选中对象工具栏')).toBeVisible();
+
+  await page.getByRole('button', { name: '连线' }).click();
+  await page.mouse.move(box.x + 220, box.y + 115);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 520, box.y + 145, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+
+  await page.getByRole('button', { name: '选择' }).click();
+  await page.mouse.click(box.x + 370, box.y + 130);
+  await expect(page.locator('.canvas-connector-handle')).toHaveCount(0);
+
+  await page.mouse.move(box.x + 520, box.y + 145);
+  await page.mouse.down();
+  await expect(page.locator('.canvas-connector-handle')).toHaveCount(2);
+  await page.mouse.up();
 });
 
 test('rect, freehand, text, and media nodes remain available after engine-backed dispatch', async ({ page }) => {

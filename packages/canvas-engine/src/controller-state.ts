@@ -39,6 +39,7 @@ export interface CanvasInteractionState extends DraftState {
   pointerMode: PointerMode;
   isWheelInteractionActive: boolean;
   snapGuides: SnapGuide[];
+  hoveredNodeId: string | null;
   hoveredAnchor: HoveredAnchor | null;
   activeConnectorHandle: ConnectorHandle | null;
 }
@@ -51,6 +52,7 @@ export function createInitialInteractionState(): CanvasInteractionState {
     draftFreehand: null,
     draftConnector: null,
     snapGuides: [],
+    hoveredNodeId: null,
     hoveredAnchor: null,
     activeConnectorHandle: null,
   };

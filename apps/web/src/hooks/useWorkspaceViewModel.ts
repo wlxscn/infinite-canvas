@@ -29,10 +29,10 @@ export function useWorkspaceViewModel(state: CanvasStoreState, selectedNode: Can
     const bounds = normalizeBounds(getCanvasNodeBounds(selectedNode, state.project.board));
     const topLeft = worldToScreen({ x: bounds.x, y: bounds.y }, state.project.board.viewport);
     const width = bounds.w * state.project.board.viewport.scale;
-    const top = Math.max(topLeft.y - 64, 84);
+    const top = Math.max(topLeft.y - 68, 84);
 
     return {
-      left: `clamp(20px, ${topLeft.x + width / 2}px, calc(100% - 380px))`,
+      left: `clamp(24px, ${topLeft.x + width / 2}px, calc(100% - 24px))`,
       top: `${top}px`,
     };
   }, [selectedNode, state.project.board]);

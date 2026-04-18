@@ -11,6 +11,7 @@ interface VideoOverlayLayerProps {
   board: BoardDoc;
   assets: AssetRecord[];
   selectedId: string | null;
+  hoveredId: string | null;
 }
 
 interface VideoOverlayItemProps {
@@ -18,9 +19,10 @@ interface VideoOverlayItemProps {
   asset: AssetRecord;
   board: BoardDoc;
   selected: boolean;
+  hovered: boolean;
 }
 
-function VideoOverlayItem({ node, asset, board, selected }: VideoOverlayItemProps) {
+function VideoOverlayItem({ node, asset, board, selected, hovered }: VideoOverlayItemProps) {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
 
   const bounds = normalizeBounds(getCanvasNodeBounds(node, board));
@@ -34,7 +36,11 @@ function VideoOverlayItem({ node, asset, board, selected }: VideoOverlayItemProp
 
   return (
     <div
-      className={selected ? 'video-overlay-item video-overlay-item-selected' : 'video-overlay-item'}
+      className={[
+        'video-overlay-item',
+        hovered ? 'video-overlay-item-hovered' : '',
+        selected ? 'video-overlay-item-selected' : '',
+      ].filter(Boolean).join(' ')}
       style={{
         left: topLeft.x,
         top: topLeft.y,
@@ -63,7 +69,7 @@ function VideoOverlayItem({ node, asset, board, selected }: VideoOverlayItemProp
   );
 }
 
-export function VideoOverlayLayer({ board, assets, selectedId }: VideoOverlayLayerProps) {
+export function VideoOverlayLayer({ board, assets, selectedId, hoveredId }: VideoOverlayLayerProps) {
   const assetMap = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
 
   const videoNodes = useMemo(
@@ -79,7 +85,16 @@ export function VideoOverlayLayer({ board, assets, selectedId }: VideoOverlayLay
           return null;
         }
 
-        return <VideoOverlayItem key={node.id} node={node} asset={asset} board={board} selected={selectedId === node.id} />;
+        return (
+          <VideoOverlayItem
+            key={node.id}
+            node={node}
+            asset={asset}
+            board={board}
+            selected={selectedId === node.id}
+            hovered={hoveredId === node.id && selectedId !== node.id}
+          />
+        );
       })}
     </div>
   );
