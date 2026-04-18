@@ -242,6 +242,38 @@ body {
   z-index: 2;
 }
 
+.canvas-anchor-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.canvas-anchor,
+.canvas-connector-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+}
+
+.canvas-anchor {
+  border: 1px solid rgba(196, 78, 28, 0.55);
+  background: rgba(255, 251, 247, 0.92);
+  box-shadow: 0 0 0 2px rgba(255, 250, 242, 0.55);
+}
+
+.canvas-anchor-active {
+  background: rgba(196, 78, 28, 0.94);
+  border-color: rgba(255, 247, 237, 0.92);
+}
+
+.canvas-connector-handle {
+  border: 1px solid rgba(37, 99, 235, 0.85);
+  background: rgba(255, 255, 255, 0.95);
+}
+
 .canvas-snap-guide {
   position: absolute;
   background: rgba(196, 78, 28, 0.9);

@@ -1,4 +1,5 @@
 import { getCanvasNodeBounds, translateCanvasNode } from './canvas-registry';
+import { isConnectorNode } from './anchors';
 import { normalizeBounds, type Bounds } from './geometry';
 import type { CanvasNode, Point, Viewport } from './model';
 
@@ -138,8 +139,10 @@ export function computeDragSnap({
   threshold = DEFAULT_SNAP_THRESHOLD,
 }: ComputeDragSnapInput): DragSnapResult {
   const translatedNode = translateCanvasNode(node, delta);
-  const translatedBounds = normalizeBounds(getCanvasNodeBounds(translatedNode));
-  const otherBounds = nodes.filter((candidate) => candidate.id !== node.id).map((candidate) => normalizeBounds(getCanvasNodeBounds(candidate)));
+  const translatedBounds = normalizeBounds(getCanvasNodeBounds(translatedNode, { version: 2, viewport, nodes }));
+  const otherBounds = nodes
+    .filter((candidate) => candidate.id !== node.id && !isConnectorNode(candidate))
+    .map((candidate) => normalizeBounds(getCanvasNodeBounds(candidate, { version: 2, viewport, nodes })));
   const xMatch = findBestAxisMatch('x', translatedBounds, otherBounds, viewport, threshold);
   const yMatch = findBestAxisMatch('y', translatedBounds, otherBounds, viewport, threshold);
 

@@ -124,6 +124,43 @@ function createSnapSeedProject() {
   return project;
 }
 
+function createConnectorSeedProject() {
+  const project = createSeedProject();
+  project.board.nodes = [
+    {
+      id: 'node_rect_a',
+      type: 'rect',
+      x: 40,
+      y: 40,
+      w: 140,
+      h: 100,
+      stroke: '#111827',
+      fill: 'rgba(59, 130, 246, 0.2)',
+    },
+    {
+      id: 'node_rect_b',
+      type: 'rect',
+      x: 320,
+      y: 60,
+      w: 140,
+      h: 100,
+      stroke: '#111827',
+      fill: 'rgba(20, 184, 166, 0.18)',
+    },
+    {
+      id: 'node_rect_c',
+      type: 'rect',
+      x: 320,
+      y: 240,
+      w: 140,
+      h: 100,
+      stroke: '#111827',
+      fill: 'rgba(244, 114, 182, 0.16)',
+    },
+  ];
+  return project;
+}
+
 test('can persist seeded sidebar sessions and local asset interactions after reload', async ({ page }) => {
   const sessionItems = page.locator('.agent-session-item');
 
@@ -301,6 +338,68 @@ test('dragged nodes snap to nearby alignment targets', async ({ page }) => {
   expect(rectNode.y).toBe(360);
   await expect(page.locator('.canvas-ruler-range-x')).toBeVisible();
   await expect(page.locator('.canvas-ruler-range-y')).toBeVisible();
+});
+
+test('connector tool creates anchored connectors, supports reattachment, and persists after reload', async ({ page }) => {
+  await page.addInitScript(([storageKey, project]) => {
+    if (window.sessionStorage.getItem('__seeded_project__') === 'true') {
+      return;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(project));
+    window.sessionStorage.setItem('__seeded_project__', 'true');
+  }, [STORAGE_KEY, createConnectorSeedProject()]);
+
+  await page.goto('/');
+
+  const canvas = page.locator('canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+
+  if (!box) {
+    return;
+  }
+
+  await page.getByRole('button', { name: '连线' }).click();
+  await page.mouse.move(box.x + 180, box.y + 90);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 320, box.y + 110, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+
+  let project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  let connector = project.board.nodes.find((node: { type: string }) => node.type === 'connector');
+  expect(connector).toBeTruthy();
+  expect(connector.start).toEqual({ kind: 'attached', nodeId: 'node_rect_a', anchor: 'east' });
+  expect(connector.end).toEqual({ kind: 'attached', nodeId: 'node_rect_b', anchor: 'west' });
+
+  await page.getByRole('button', { name: '选择' }).click();
+  await page.mouse.click(box.x + 250, box.y + 100);
+  await page.mouse.move(box.x + 320, box.y + 110);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 320, box.y + 290, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+
+  project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  connector = project.board.nodes.find((node: { type: string }) => node.type === 'connector');
+  expect(connector.end).toEqual({ kind: 'attached', nodeId: 'node_rect_c', anchor: 'west' });
+
+  await page.getByRole('button', { name: '选择' }).click();
+  await page.mouse.move(box.x + 110, box.y + 90);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 150, box.y + 120, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+
+  project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  connector = project.board.nodes.find((node: { type: string }) => node.type === 'connector');
+  expect(connector.start).toEqual({ kind: 'attached', nodeId: 'node_rect_a', anchor: 'east' });
+
+  await page.reload();
+  project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  connector = project.board.nodes.find((node: { type: string }) => node.type === 'connector');
+  expect(connector).toBeTruthy();
+  expect(connector.end).toEqual({ kind: 'attached', nodeId: 'node_rect_c', anchor: 'west' });
 });
 
 test('rect, freehand, text, and media nodes remain available after engine-backed dispatch', async ({ page }) => {

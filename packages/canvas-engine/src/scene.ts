@@ -1,8 +1,9 @@
+import { isConnectorNode, resolveConnectorPoints } from './anchors';
 import { createCanvasRenderRuntime } from './runtime';
 import { drawCanvasNode, getCanvasNodeBounds } from './canvas-registry';
 import { normalizeBounds } from './geometry';
 import { worldToScreen } from './transform';
-import type { BoardDoc, CanvasNode, FreehandNode, Point, RectNode } from './model';
+import type { BoardDoc, CanvasNode, ConnectorNode, FreehandNode, Point, RectNode } from './model';
 import type { CanvasAssetRecord } from './canvas-registry';
 
 interface RenderOptions {
@@ -12,10 +13,43 @@ interface RenderOptions {
   selectedId: string | null;
   draftRect: RectNode | null;
   draftFreehand: FreehandNode | null;
+  draftConnector: ConnectorNode | null;
 }
 
 function drawSelectionOutline(ctx: CanvasRenderingContext2D, node: CanvasNode, board: BoardDoc): void {
-  const bounds = normalizeBounds(getCanvasNodeBounds(node));
+  if (isConnectorNode(node)) {
+    const points = resolveConnectorPoints(node, board);
+    if (!points) {
+      return;
+    }
+
+    const start = worldToScreen(points.start, board.viewport);
+    const end = worldToScreen(points.end, board.viewport);
+    const radius = 6;
+
+    ctx.save();
+    ctx.strokeStyle = '#2563eb';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 4]);
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#2563eb';
+    ctx.lineWidth = 1.5;
+    for (const point of [start, end]) {
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
+
+  const bounds = normalizeBounds(getCanvasNodeBounds(node, board));
   const p = worldToScreen({ x: bounds.x, y: bounds.y }, board.viewport);
   const w = bounds.w * board.viewport.scale;
   const h = bounds.h * board.viewport.scale;
@@ -37,7 +71,7 @@ function drawSelectionOutline(ctx: CanvasRenderingContext2D, node: CanvasNode, b
   ctx.restore();
 }
 
-export function renderScene({ canvas, board, assets, selectedId, draftRect, draftFreehand }: RenderOptions): void {
+export function renderScene({ canvas, board, assets, selectedId, draftRect, draftFreehand, draftConnector }: RenderOptions): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) {
     return;
@@ -58,7 +92,7 @@ export function renderScene({ canvas, board, assets, selectedId, draftRect, draf
   ctx.fillRect(0, 0, width, height);
 
   const rerender = () => {
-    renderScene({ canvas, board, assets, selectedId, draftRect, draftFreehand });
+    renderScene({ canvas, board, assets, selectedId, draftRect, draftFreehand, draftConnector });
   };
   const runtime = createCanvasRenderRuntime(assets);
 
@@ -72,6 +106,10 @@ export function renderScene({ canvas, board, assets, selectedId, draftRect, draf
 
   if (draftFreehand) {
     drawCanvasNode(ctx, draftFreehand, { board, runtime, rerender });
+  }
+
+  if (draftConnector) {
+    drawCanvasNode(ctx, draftConnector, { board, runtime, rerender });
   }
 
   const selectedNode = board.nodes.find((node) => node.id === selectedId);

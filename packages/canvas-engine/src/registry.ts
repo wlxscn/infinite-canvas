@@ -12,12 +12,12 @@ export interface NodeRegistry<
 > {
   getAdapter: <TSpecificNode extends TNode>(node: TSpecificNode) => NodeAdapter<TSpecificNode, TBoard, TRuntime, TPoint>;
   drawNode: (ctx: CanvasRenderingContext2D, node: TNode, environment: RenderEnvironment<TBoard, TRuntime>) => void;
-  getNodeBounds: (node: TNode) => Bounds;
-  hitTestNode: (node: TNode, point: TPoint, tolerance: number) => boolean;
-  pickTopNode: (nodes: TNode[], point: TPoint, tolerance: number) => string | null;
+  getNodeBounds: (node: TNode, board?: TBoard) => Bounds;
+  hitTestNode: (node: TNode, point: TPoint, tolerance: number, board?: TBoard) => boolean;
+  pickTopNode: (nodes: TNode[], point: TPoint, tolerance: number, board?: TBoard) => string | null;
   translateNode: (node: TNode, delta: TPoint) => TNode;
   resizeNode: (node: TNode, pointer: TPoint) => TNode;
-  hitResizeHandle: (node: TNode, point: TPoint, scale: number, handleSize: number) => boolean;
+  hitResizeHandle: (node: TNode, point: TPoint, scale: number, handleSize: number, board?: TBoard) => boolean;
   getRegistry: () => ReadonlyMap<TNode['type'], TAdapter>;
 }
 
@@ -45,15 +45,15 @@ export function createNodeRegistry<
     drawNode(ctx, node, environment) {
       getAdapter(node).draw(ctx, node, environment);
     },
-    getNodeBounds(node) {
-      return getAdapter(node).getBounds(node);
+    getNodeBounds(node, board) {
+      return getAdapter(node).getBounds(node, board);
     },
-    hitTestNode(node, point, tolerance) {
-      return getAdapter(node).hitTest(node, point, tolerance);
+    hitTestNode(node, point, tolerance, board) {
+      return getAdapter(node).hitTest(node, point, tolerance, board);
     },
-    pickTopNode(nodes, point, tolerance) {
+    pickTopNode(nodes, point, tolerance, board) {
       for (let index = nodes.length - 1; index >= 0; index -= 1) {
-        if (getAdapter(nodes[index]).hitTest(nodes[index], point, tolerance)) {
+        if (getAdapter(nodes[index]).hitTest(nodes[index], point, tolerance, board)) {
           return nodes[index].id;
         }
       }
@@ -66,9 +66,9 @@ export function createNodeRegistry<
       const adapter = getAdapter(node);
       return adapter.resize ? adapter.resize(node, pointer) : node;
     },
-    hitResizeHandle(node, point, scale, handleSize) {
+    hitResizeHandle(node, point, scale, handleSize, board) {
       const adapter = getAdapter(node);
-      return adapter.hitResizeHandle ? adapter.hitResizeHandle(node, point, scale, handleSize) : false;
+      return adapter.hitResizeHandle ? adapter.hitResizeHandle(node, point, scale, handleSize, board) : false;
     },
     getRegistry() {
       return adapterRegistry;

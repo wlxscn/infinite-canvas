@@ -2,8 +2,14 @@ import type { ChatMessage } from '@infinite-canvas/shared/chat';
 import type { GenerationMediaType } from '@infinite-canvas/shared/api';
 import type { BoardDoc } from '@infinite-canvas/canvas-engine';
 export type {
+  AnchorId,
+  AttachedConnectorEndpoint,
   BoardDoc,
+  BoxNode,
   CanvasNode,
+  ConnectorEndpoint,
+  ConnectorNode,
+  FreeConnectorEndpoint,
   FreehandNode,
   ImageNode,
   Point,
@@ -14,7 +20,7 @@ export type {
   Viewport,
 } from '@infinite-canvas/canvas-engine';
 
-export type Tool = 'select' | 'rect' | 'freehand' | 'text' | 'pan';
+export type Tool = 'select' | 'rect' | 'freehand' | 'text' | 'connector' | 'pan';
 
 export interface AssetRecord {
   id: string;

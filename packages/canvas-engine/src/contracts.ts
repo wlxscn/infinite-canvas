@@ -24,9 +24,9 @@ export interface NodeAdapter<
 > {
   type: TNode['type'];
   draw: (ctx: CanvasRenderingContext2D, node: TNode, env: RenderEnvironment<TBoard, TRuntime>) => void;
-  getBounds: (node: TNode) => Bounds;
-  hitTest: (node: TNode, point: TPoint, tolerance: number) => boolean;
+  getBounds: (node: TNode, board?: TBoard) => Bounds;
+  hitTest: (node: TNode, point: TPoint, tolerance: number, board?: TBoard) => boolean;
   translate: (node: TNode, delta: TPoint) => TNode;
   resize?: (node: TNode, pointer: TPoint) => TNode;
-  hitResizeHandle?: (node: TNode, point: TPoint, scale: number, handleSize: number) => boolean;
+  hitResizeHandle?: (node: TNode, point: TPoint, scale: number, handleSize: number, board?: TBoard) => boolean;
 }

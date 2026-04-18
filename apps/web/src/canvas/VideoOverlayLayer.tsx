@@ -23,7 +23,7 @@ interface VideoOverlayItemProps {
 function VideoOverlayItem({ node, asset, board, selected }: VideoOverlayItemProps) {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
 
-  const bounds = normalizeBounds(getCanvasNodeBounds(node));
+  const bounds = normalizeBounds(getCanvasNodeBounds(node, board));
   const topLeft = worldToScreen({ x: bounds.x, y: bounds.y }, board.viewport);
   const width = bounds.w * board.viewport.scale;
   const height = bounds.h * board.viewport.scale;

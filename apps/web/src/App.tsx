@@ -25,6 +25,7 @@ const TOOLS: Array<{ id: Tool; label: string; icon: string }> = [
   { id: 'rect', label: '矩形', icon: '▢' },
   { id: 'freehand', label: '自由线', icon: '✎' },
   { id: 'text', label: '文本', icon: 'T' },
+  { id: 'connector', label: '连线', icon: '↗' },
 ];
 
 function getSelectedNode(state: CanvasStoreState) {
@@ -130,6 +131,7 @@ function App() {
             {selectedNode && selectionToolbarStyle && !isCanvasInteractionActive ? (
               <SelectionToolbar
                 selectedNode={selectedNode}
+                board={state.project.board}
                 style={selectionToolbarStyle}
                 onMoveBackward={() => nudgeLayer('backward')}
                 onMoveForward={() => nudgeLayer('forward')}

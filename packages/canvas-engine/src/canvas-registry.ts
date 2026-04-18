@@ -8,6 +8,7 @@ import { imageNodeAdapter } from './adapters/image';
 import { rectNodeAdapter } from './adapters/rect';
 import { textNodeAdapter } from './adapters/text';
 import { videoNodeAdapter } from './adapters/video';
+import { connectorNodeAdapter } from './adapters/connector';
 
 export interface CanvasAssetRecord extends AssetRecordLike {
   src: string;
@@ -20,7 +21,8 @@ type RegisteredCanvasNodeAdapter =
   | typeof freehandNodeAdapter
   | typeof textNodeAdapter
   | typeof imageNodeAdapter
-  | typeof videoNodeAdapter;
+  | typeof videoNodeAdapter
+  | typeof connectorNodeAdapter;
 
 type CanvasRuntime = CanvasRenderRuntime<CanvasAssetRecord>;
 type CanvasNodeAdapter<TNode extends CanvasNode> = NodeAdapter<TNode, BoardDoc, CanvasRuntime, Point>;
@@ -32,6 +34,7 @@ const canvasNodeRegistry = createNodeRegistry<CanvasNode, BoardDoc, CanvasRuntim
   textNodeAdapter,
   imageNodeAdapter,
   videoNodeAdapter,
+  connectorNodeAdapter,
 ] as const);
 
 export function getNodeAdapter<TNode extends CanvasNode>(node: TNode): CanvasNodeAdapter<TNode> {
@@ -46,16 +49,16 @@ export function drawCanvasNode(
   canvasNodeRegistry.drawNode(ctx, node, environment);
 }
 
-export function getCanvasNodeBounds(node: CanvasNode): Bounds {
-  return canvasNodeRegistry.getNodeBounds(node);
+export function getCanvasNodeBounds(node: CanvasNode, board?: BoardDoc): Bounds {
+  return canvasNodeRegistry.getNodeBounds(node, board);
 }
 
-export function hitTestCanvasNode(node: CanvasNode, point: Point, tolerance: number): boolean {
-  return canvasNodeRegistry.hitTestNode(node, point, tolerance);
+export function hitTestCanvasNode(node: CanvasNode, point: Point, tolerance: number, board?: BoardDoc): boolean {
+  return canvasNodeRegistry.hitTestNode(node, point, tolerance, board);
 }
 
-export function pickTopCanvasNode(nodes: CanvasNode[], point: Point, tolerance: number): string | null {
-  return canvasNodeRegistry.pickTopNode(nodes, point, tolerance);
+export function pickTopCanvasNode(nodes: CanvasNode[], point: Point, tolerance: number, board?: BoardDoc): string | null {
+  return canvasNodeRegistry.pickTopNode(nodes, point, tolerance, board);
 }
 
 export function translateCanvasNode(node: CanvasNode, delta: Point): CanvasNode {
@@ -71,8 +74,9 @@ export function hitCanvasNodeResizeHandle(
   point: Point,
   scale: number,
   handleSize: number,
+  board?: BoardDoc,
 ): boolean {
-  return canvasNodeRegistry.hitResizeHandle(node, point, scale, handleSize);
+  return canvasNodeRegistry.hitResizeHandle(node, point, scale, handleSize, board);
 }
 
 export function getNodeAdapterRegistry(): ReadonlyMap<CanvasNode['type'], RegisteredCanvasNodeAdapter> {

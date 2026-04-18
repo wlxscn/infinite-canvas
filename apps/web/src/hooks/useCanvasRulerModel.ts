@@ -29,6 +29,7 @@ export interface CanvasRulerModel {
 }
 
 export interface CanvasRulerInput {
+  board: import('../types/canvas').BoardDoc;
   viewport: Viewport;
   contentWidth: number;
   contentHeight: number;
@@ -193,12 +194,13 @@ export function buildRulerAxisModel({
 }
 
 export function buildCanvasRulerModel({
+  board,
   viewport,
   contentWidth,
   contentHeight,
   selectedNode,
 }: CanvasRulerInput): CanvasRulerModel {
-  const normalizedBounds = selectedNode ? normalizeBounds(getCanvasNodeBounds(selectedNode)) : null;
+  const normalizedBounds = selectedNode ? normalizeBounds(getCanvasNodeBounds(selectedNode, board)) : null;
 
   return {
     horizontal: buildRulerAxisModel({
@@ -219,6 +221,7 @@ export function buildCanvasRulerModel({
 }
 
 export function useCanvasRulerModel({
+  board,
   viewport,
   contentWidth,
   contentHeight,
@@ -227,11 +230,12 @@ export function useCanvasRulerModel({
   return useMemo(
     () =>
       buildCanvasRulerModel({
+        board,
         viewport,
         contentWidth,
         contentHeight,
         selectedNode,
       }),
-    [contentHeight, contentWidth, selectedNode, viewport],
+    [board, contentHeight, contentWidth, selectedNode, viewport],
   );
 }

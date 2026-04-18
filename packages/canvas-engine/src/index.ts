@@ -1,7 +1,13 @@
 export type { EngineNode, EnginePoint, NodeAdapter, RenderEnvironment } from './contracts';
 export type {
+  AnchorId,
+  AttachedConnectorEndpoint,
   BoardDoc,
+  BoxNode,
   CanvasNode,
+  ConnectorEndpoint,
+  ConnectorNode,
+  FreeConnectorEndpoint,
   FreehandNode,
   ImageNode,
   Point,
@@ -11,6 +17,18 @@ export type {
   VideoNode,
   Viewport,
 } from './model';
+export {
+  findAnchorTarget,
+  getAnchorPoint,
+  getNodeAnchors,
+  isAttachedConnectorEndpoint,
+  isBoxNode,
+  isConnectorAttachedToNode,
+  isConnectorNode,
+  resolveConnectorEndpoint,
+  resolveConnectorPoints,
+  type AnchorTarget,
+} from './anchors';
 export { boundsFromPoints, distanceToSegment, normalizeBounds, pointInBounds, type Bounds } from './geometry';
 export { clampScale, screenToWorld, worldToScreen, zoomAtScreenPoint, MAX_SCALE, MIN_SCALE } from './transform';
 export { createNodeRegistry, type NodeRegistry } from './registry';

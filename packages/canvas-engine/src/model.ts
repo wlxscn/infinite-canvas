@@ -9,6 +9,8 @@ export interface Point {
   y: number;
 }
 
+export type AnchorId = 'north' | 'east' | 'south' | 'west';
+
 export interface RectNode {
   id: string;
   type: 'rect';
@@ -61,7 +63,32 @@ export interface VideoNode {
   assetId: string;
 }
 
-export type CanvasNode = RectNode | FreehandNode | TextNode | ImageNode | VideoNode;
+export type BoxNode = RectNode | TextNode | ImageNode | VideoNode;
+
+export interface AttachedConnectorEndpoint {
+  kind: 'attached';
+  nodeId: string;
+  anchor: AnchorId;
+}
+
+export interface FreeConnectorEndpoint {
+  kind: 'free';
+  x: number;
+  y: number;
+}
+
+export type ConnectorEndpoint = AttachedConnectorEndpoint | FreeConnectorEndpoint;
+
+export interface ConnectorNode {
+  id: string;
+  type: 'connector';
+  start: ConnectorEndpoint;
+  end: ConnectorEndpoint;
+  stroke: string;
+  width: number;
+}
+
+export type CanvasNode = RectNode | FreehandNode | TextNode | ImageNode | VideoNode | ConnectorNode;
 export type Shape = RectNode | FreehandNode;
 
 export interface BoardDoc {

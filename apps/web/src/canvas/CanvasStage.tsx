@@ -1,9 +1,13 @@
 import {
   createCanvasInteractionController,
   createInitialInteractionState,
+  getNodeAnchors,
   getCanvasCursor,
   isInteractionActive,
+  isConnectorNode,
   renderScene,
+  resolveConnectorPoints,
+  worldToScreen,
   type DraftState,
   type CanvasInteractionController,
   type SnapGuide,
@@ -19,7 +23,7 @@ import {
 import { VideoOverlayLayer } from './VideoOverlayLayer';
 import { useCanvasRulerModel, type CanvasRulerAxisModel } from '../hooks/useCanvasRulerModel';
 import { createId } from '../utils/id';
-import type { CanvasProject, Point, Tool } from '../types/canvas';
+import type { CanvasNode, CanvasProject, Point, Tool } from '../types/canvas';
 import { getNodeById, upsertNode } from '../state/store';
 
 const RULER_SIZE = 28;
@@ -123,6 +127,78 @@ function CanvasSnapGuides({ guides }: { guides: SnapGuide[] }) {
   );
 }
 
+function CanvasAnchorOverlay({
+  board,
+  tool,
+  selectedNode,
+  hoveredAnchor,
+}: {
+  board: CanvasProject['board'];
+  tool: Tool;
+  selectedNode: CanvasNode | null;
+  hoveredAnchor: { nodeId: string; anchor: string } | null;
+}) {
+  const shouldShowAnchors = tool === 'connector' || (selectedNode ? isConnectorNode(selectedNode) : false);
+  const anchors = useMemo(() => {
+    if (!shouldShowAnchors) {
+      return [];
+    }
+
+    return board.nodes.flatMap((node) =>
+      getNodeAnchors(node).map((anchor) => ({
+        ...anchor,
+        screenPoint: worldToScreen(anchor.point, board.viewport),
+      })),
+    );
+  }, [board.nodes, board.viewport, shouldShowAnchors]);
+
+  const connectorHandles = useMemo(() => {
+    if (!selectedNode || !isConnectorNode(selectedNode)) {
+      return null;
+    }
+
+    const points = resolveConnectorPoints(selectedNode, board);
+    if (!points) {
+      return null;
+    }
+
+    return {
+      start: worldToScreen(points.start, board.viewport),
+      end: worldToScreen(points.end, board.viewport),
+    };
+  }, [board, selectedNode]);
+
+  if (!shouldShowAnchors && !connectorHandles) {
+    return null;
+  }
+
+  return (
+    <div className="canvas-anchor-overlay" aria-hidden="true">
+      {anchors.map((anchor) => (
+        <div
+          key={`${anchor.nodeId}-${anchor.anchor}`}
+          className={
+            hoveredAnchor?.nodeId === anchor.nodeId && hoveredAnchor.anchor === anchor.anchor
+              ? 'canvas-anchor canvas-anchor-active'
+              : 'canvas-anchor'
+          }
+          style={{
+            left: anchor.screenPoint.x,
+            top: anchor.screenPoint.y,
+          }}
+        />
+      ))}
+
+      {connectorHandles ? (
+        <>
+          <div className="canvas-connector-handle" style={{ left: connectorHandles.start.x, top: connectorHandles.start.y }} />
+          <div className="canvas-connector-handle" style={{ left: connectorHandles.end.x, top: connectorHandles.end.y }} />
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 export function CanvasStage({
   project,
   tool,
@@ -162,6 +238,7 @@ export function CanvasStage({
         selectedId: selectedNodeId,
         draftRect: state.draftRect,
         draftFreehand: state.draftFreehand,
+        draftConnector: state.draftConnector,
       });
     },
     [],
@@ -216,6 +293,22 @@ export function CanvasStage({
         color: '#0f172a',
         fontSize: 20,
         fontFamily: 'Space Grotesk, Avenir Next, Segoe UI, sans-serif',
+      }),
+      createConnectorNode: (anchor, point) => ({
+        id: createId('node'),
+        type: 'connector',
+        start: {
+          kind: 'attached',
+          nodeId: anchor.nodeId,
+          anchor: anchor.anchor,
+        },
+        end: {
+          kind: 'free',
+          x: point.x,
+          y: point.y,
+        },
+        stroke: '#c44e1c',
+        width: 2,
       }),
       getNodeById,
       upsertNode,
@@ -277,6 +370,7 @@ export function CanvasStage({
   const contentWidth = Math.max(0, containerSize.width - RULER_SIZE);
   const contentHeight = Math.max(0, containerSize.height - RULER_SIZE);
   const rulerModel = useCanvasRulerModel({
+    board: project.board,
     viewport: project.board.viewport,
     contentWidth,
     contentHeight,
@@ -353,6 +447,12 @@ export function CanvasStage({
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
+        />
+        <CanvasAnchorOverlay
+          board={project.board}
+          tool={tool}
+          selectedNode={selectedNode}
+          hoveredAnchor={interactionState.hoveredAnchor}
         />
         <CanvasSnapGuides guides={interactionState.snapGuides} />
         <VideoOverlayLayer board={project.board} assets={project.assets} selectedId={selectedId} />

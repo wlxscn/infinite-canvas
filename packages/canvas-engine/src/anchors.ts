@@ -1,0 +1,120 @@
+import { normalizeBounds, type Bounds } from './geometry';
+import type {
+  AnchorId,
+  AttachedConnectorEndpoint,
+  BoardDoc,
+  BoxNode,
+  CanvasNode,
+  ConnectorEndpoint,
+  ConnectorNode,
+  Point,
+} from './model';
+
+export interface AnchorTarget {
+  nodeId: string;
+  anchor: AnchorId;
+  point: Point;
+}
+
+function getBoxBounds(node: BoxNode): Bounds {
+  return normalizeBounds(node);
+}
+
+export function isBoxNode(node: CanvasNode): node is BoxNode {
+  return node.type === 'rect' || node.type === 'text' || node.type === 'image' || node.type === 'video';
+}
+
+export function isConnectorNode(node: CanvasNode): node is ConnectorNode {
+  return node.type === 'connector';
+}
+
+export function isAttachedConnectorEndpoint(endpoint: ConnectorEndpoint): endpoint is AttachedConnectorEndpoint {
+  return endpoint.kind === 'attached';
+}
+
+export function getAnchorPoint(node: BoxNode, anchor: AnchorId): Point {
+  const bounds = getBoxBounds(node);
+  const centerX = bounds.x + bounds.w / 2;
+  const centerY = bounds.y + bounds.h / 2;
+
+  switch (anchor) {
+    case 'north':
+      return { x: centerX, y: bounds.y };
+    case 'east':
+      return { x: bounds.x + bounds.w, y: centerY };
+    case 'south':
+      return { x: centerX, y: bounds.y + bounds.h };
+    case 'west':
+      return { x: bounds.x, y: centerY };
+  }
+}
+
+export function getNodeAnchors(node: CanvasNode): AnchorTarget[] {
+  if (!isBoxNode(node)) {
+    return [];
+  }
+
+  return (['north', 'east', 'south', 'west'] as const).map((anchor) => ({
+    nodeId: node.id,
+    anchor,
+    point: getAnchorPoint(node, anchor),
+  }));
+}
+
+export function findAnchorTarget(
+  nodes: CanvasNode[],
+  point: Point,
+  tolerance: number,
+  options: { excludeNodeId?: string; excludeConnectorId?: string } = {},
+): AnchorTarget | null {
+  let closest: AnchorTarget | null = null;
+  let closestDistance = Number.POSITIVE_INFINITY;
+
+  for (let index = nodes.length - 1; index >= 0; index -= 1) {
+    const node = nodes[index];
+    if (!isBoxNode(node) || node.id === options.excludeNodeId || node.id === options.excludeConnectorId) {
+      continue;
+    }
+
+    for (const anchor of getNodeAnchors(node)) {
+      const distance = Math.hypot(anchor.point.x - point.x, anchor.point.y - point.y);
+      if (distance <= tolerance && distance < closestDistance) {
+        closest = anchor;
+        closestDistance = distance;
+      }
+    }
+  }
+
+  return closest;
+}
+
+export function resolveConnectorEndpoint(endpoint: ConnectorEndpoint, board: BoardDoc): Point | null {
+  if (endpoint.kind === 'free') {
+    return { x: endpoint.x, y: endpoint.y };
+  }
+
+  const targetNode = board.nodes.find((node) => node.id === endpoint.nodeId);
+  if (!targetNode || !isBoxNode(targetNode)) {
+    return null;
+  }
+
+  return getAnchorPoint(targetNode, endpoint.anchor);
+}
+
+export function resolveConnectorPoints(node: ConnectorNode, board: BoardDoc): { start: Point; end: Point } | null {
+  const start = resolveConnectorEndpoint(node.start, board);
+  const end = resolveConnectorEndpoint(node.end, board);
+
+  if (!start || !end) {
+    return null;
+  }
+
+  return { start, end };
+}
+
+export function isConnectorAttachedToNode(node: ConnectorNode, nodeId: string): boolean {
+  return (
+    (node.start.kind === 'attached' && node.start.nodeId === nodeId) ||
+    (node.end.kind === 'attached' && node.end.nodeId === nodeId)
+  );
+}

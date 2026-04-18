@@ -7,6 +7,7 @@ import type {
   GenerationJob,
   Tool,
 } from '../types/canvas';
+import { isConnectorAttachedToNode, isConnectorNode } from '@infinite-canvas/canvas-engine';
 
 const MAX_HISTORY = 100;
 
@@ -146,7 +147,7 @@ export function upsertNode(nodes: CanvasNode[], node: CanvasNode): CanvasNode[] 
 }
 
 export function removeNodeById(nodes: CanvasNode[], id: string): CanvasNode[] {
-  return nodes.filter((node) => node.id !== id);
+  return nodes.filter((node) => node.id !== id && (!isConnectorNode(node) || !isConnectorAttachedToNode(node, id)));
 }
 
 export function getNodeById(nodes: CanvasNode[], id: string | null): CanvasNode | null {

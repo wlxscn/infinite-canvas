@@ -1,4 +1,4 @@
-import type { FreehandNode, RectNode } from './model';
+import type { AnchorId, ConnectorNode, FreehandNode, RectNode } from './model';
 
 export type PointerMode =
   | 'idle'
@@ -6,12 +6,20 @@ export type PointerMode =
   | 'dragging-node'
   | 'drawing-rect'
   | 'drawing-freehand'
+  | 'drawing-connector'
+  | 'editing-connector-end'
   | 'resizing-node'
   | 'pinch';
 
 export interface DraftState {
   draftRect: RectNode | null;
   draftFreehand: FreehandNode | null;
+  draftConnector: ConnectorNode | null;
+}
+
+export interface HoveredAnchor {
+  nodeId: string;
+  anchor: AnchorId;
 }
 
 export interface SnapGuide {
@@ -26,6 +34,8 @@ export interface CanvasInteractionState extends DraftState {
   pointerMode: PointerMode;
   isWheelInteractionActive: boolean;
   snapGuides: SnapGuide[];
+  hoveredAnchor: HoveredAnchor | null;
+  activeConnectorHandle: 'start' | 'end' | null;
 }
 
 export function createInitialInteractionState(): CanvasInteractionState {
@@ -34,12 +44,22 @@ export function createInitialInteractionState(): CanvasInteractionState {
     isWheelInteractionActive: false,
     draftRect: null,
     draftFreehand: null,
+    draftConnector: null,
     snapGuides: [],
+    hoveredAnchor: null,
+    activeConnectorHandle: null,
   };
 }
 
 export function isActiveInteractionMode(mode: PointerMode): boolean {
-  return mode === 'panning' || mode === 'dragging-node' || mode === 'resizing-node' || mode === 'pinch';
+  return (
+    mode === 'panning' ||
+    mode === 'dragging-node' ||
+    mode === 'drawing-connector' ||
+    mode === 'editing-connector-end' ||
+    mode === 'resizing-node' ||
+    mode === 'pinch'
+  );
 }
 
 export function isInteractionActive(state: CanvasInteractionState): boolean {
@@ -48,7 +68,7 @@ export function isInteractionActive(state: CanvasInteractionState): boolean {
 
 export function getCanvasCursor(
   state: CanvasInteractionState,
-  tool: 'select' | 'rect' | 'freehand' | 'text' | 'pan',
+  tool: 'select' | 'rect' | 'freehand' | 'text' | 'connector' | 'pan',
   isSpacePressed: boolean,
 ): string {
   if (state.pointerMode === 'panning' || state.pointerMode === 'pinch') {
@@ -60,7 +80,7 @@ export function getCanvasCursor(
   if (tool === 'pan' || isSpacePressed) {
     return 'grab';
   }
-  if (tool === 'rect' || tool === 'freehand' || tool === 'text') {
+  if (tool === 'rect' || tool === 'freehand' || tool === 'text' || tool === 'connector') {
     return 'crosshair';
   }
   return 'default';
