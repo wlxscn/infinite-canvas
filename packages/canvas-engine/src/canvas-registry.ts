@@ -9,6 +9,7 @@ import { rectNodeAdapter } from './adapters/rect';
 import { textNodeAdapter } from './adapters/text';
 import { videoNodeAdapter } from './adapters/video';
 import { connectorNodeAdapter } from './adapters/connector';
+import { containerNodeAdapter } from './adapters/container';
 
 export interface CanvasAssetRecord extends AssetRecordLike {
   src: string;
@@ -22,7 +23,8 @@ type RegisteredCanvasNodeAdapter =
   | typeof textNodeAdapter
   | typeof imageNodeAdapter
   | typeof videoNodeAdapter
-  | typeof connectorNodeAdapter;
+  | typeof connectorNodeAdapter
+  | typeof containerNodeAdapter;
 
 type CanvasRuntime = CanvasRenderRuntime<CanvasAssetRecord>;
 type CanvasNodeAdapter<TNode extends CanvasNode> = NodeAdapter<TNode, BoardDoc, CanvasRuntime, Point>;
@@ -35,6 +37,7 @@ const canvasNodeRegistry = createNodeRegistry<CanvasNode, BoardDoc, CanvasRuntim
   imageNodeAdapter,
   videoNodeAdapter,
   connectorNodeAdapter,
+  containerNodeAdapter,
 ] as const);
 
 export function getNodeAdapter<TNode extends CanvasNode>(node: TNode): CanvasNodeAdapter<TNode> {

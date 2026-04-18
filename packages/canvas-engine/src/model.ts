@@ -64,6 +64,18 @@ export interface VideoNode {
 }
 
 export type BoxNode = RectNode | TextNode | ImageNode | VideoNode;
+export type ContainerChildNode = RectNode | FreehandNode | TextNode | ImageNode | VideoNode;
+
+export interface ContainerNode {
+  id: string;
+  type: 'container';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  children: ContainerChildNode[];
+  name?: string;
+}
 
 export interface AttachedConnectorEndpoint {
   kind: 'attached';
@@ -92,7 +104,7 @@ export interface ConnectorNode {
   waypoints?: Point[];
 }
 
-export type CanvasNode = RectNode | FreehandNode | TextNode | ImageNode | VideoNode | ConnectorNode;
+export type CanvasNode = RectNode | FreehandNode | TextNode | ImageNode | VideoNode | ConnectorNode | ContainerNode;
 export type Shape = RectNode | FreehandNode;
 
 export interface BoardDoc {

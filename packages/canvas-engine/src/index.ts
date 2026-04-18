@@ -5,6 +5,8 @@ export type {
   BoardDoc,
   BoxNode,
   CanvasNode,
+  ContainerChildNode,
+  ContainerNode,
   ConnectorEndpoint,
   ConnectorNode,
   ConnectorPathMode,
@@ -34,6 +36,26 @@ export {
   resolveConnectorPoints,
   type AnchorTarget,
 } from './anchors';
+export {
+  appendNodeToContainer,
+  bringNodeForward as bringHierarchicalNodeForward,
+  dissolveContainer,
+  getAllDescendantNodes,
+  getContainerById,
+  getNodeById as getHierarchicalNodeById,
+  getNodeParentContainerId,
+  getNodeWorldOffset,
+  getNodesInContext,
+  isContainerNode,
+  moveNodeOutOfContainer,
+  moveNodeToContainer,
+  removeNodeById as removeHierarchicalNodeById,
+  resolveNodeToWorld,
+  sendNodeBackward as sendHierarchicalNodeBackward,
+  upsertNode as upsertHierarchicalNode,
+  worldPointToContainerLocal,
+  worldPointToNodeLocal,
+} from './hierarchy';
 export { boundsFromPoints, distanceToSegment, normalizeBounds, pointInBounds, type Bounds } from './geometry';
 export { clampScale, screenToWorld, worldToScreen, zoomAtScreenPoint, MAX_SCALE, MIN_SCALE } from './transform';
 export { createNodeRegistry, type NodeRegistry } from './registry';

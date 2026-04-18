@@ -1,9 +1,10 @@
 import { isConnectorNode, resolveConnectorPathPoints } from './anchors';
-import { createCanvasRenderRuntime } from './runtime';
+import { createCanvasRenderRuntime, type CanvasRenderRuntime } from './runtime';
 import { drawCanvasNode, getCanvasNodeBounds } from './canvas-registry';
 import { normalizeBounds } from './geometry';
+import { getNodeById, isContainerNode, resolveNodeToWorld } from './hierarchy';
 import { worldToScreen } from './transform';
-import type { BoardDoc, CanvasNode, ConnectorNode, FreehandNode, Point, RectNode } from './model';
+import type { BoardDoc, CanvasNode, ConnectorNode, ContainerNode, FreehandNode, Point, RectNode } from './model';
 import type { CanvasAssetRecord } from './canvas-registry';
 
 interface RenderOptions {
@@ -12,6 +13,7 @@ interface RenderOptions {
   assets: CanvasAssetRecord[];
   selectedId: string | null;
   hoveredId: string | null;
+  activeContainerId: string | null;
   draftRect: RectNode | null;
   draftFreehand: FreehandNode | null;
   draftConnector: ConnectorNode | null;
@@ -69,7 +71,48 @@ function drawNodeChrome(
   ctx.restore();
 }
 
-export function renderScene({ canvas, board, assets, selectedId, hoveredId, draftRect, draftFreehand, draftConnector }: RenderOptions): void {
+function drawNodeTree(
+  ctx: CanvasRenderingContext2D,
+  board: BoardDoc,
+  node: CanvasNode,
+  runtime: CanvasRenderRuntime<CanvasAssetRecord>,
+  rerender: () => void,
+): void {
+  drawCanvasNode(ctx, node, { board, runtime, rerender });
+
+  if (!isContainerNode(node)) {
+    return;
+  }
+
+  for (const child of node.children) {
+    drawCanvasNode(ctx, child, { board, runtime, rerender });
+  }
+}
+
+function drawActiveContainerOverlay(
+  ctx: CanvasRenderingContext2D,
+  board: BoardDoc,
+  activeContainer: ContainerNode,
+  width: number,
+  height: number,
+): void {
+  const bounds = normalizeBounds(resolveNodeToWorld(activeContainer, board));
+  const topLeft = worldToScreen({ x: bounds.x, y: bounds.y }, board.viewport);
+  const screenWidth = bounds.w * board.viewport.scale;
+  const screenHeight = bounds.h * board.viewport.scale;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.08)';
+  ctx.fillRect(0, 0, width, height);
+  ctx.clearRect(topLeft.x, topLeft.y, screenWidth, screenHeight);
+  ctx.strokeStyle = 'rgba(196, 78, 28, 0.72)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([10, 6]);
+  ctx.strokeRect(topLeft.x - 6, topLeft.y - 6, screenWidth + 12, screenHeight + 12);
+  ctx.restore();
+}
+
+export function renderScene({ canvas, board, assets, selectedId, hoveredId, activeContainerId, draftRect, draftFreehand, draftConnector }: RenderOptions): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) {
     return;
@@ -90,32 +133,37 @@ export function renderScene({ canvas, board, assets, selectedId, hoveredId, draf
   ctx.fillRect(0, 0, width, height);
 
   const rerender = () => {
-    renderScene({ canvas, board, assets, selectedId, hoveredId, draftRect, draftFreehand, draftConnector });
+    renderScene({ canvas, board, assets, selectedId, hoveredId, activeContainerId, draftRect, draftFreehand, draftConnector });
   };
   const runtime = createCanvasRenderRuntime(assets);
 
   for (const node of board.nodes) {
-    drawCanvasNode(ctx, node, { board, runtime, rerender });
+    drawNodeTree(ctx, board, node, runtime, rerender);
   }
 
   if (draftRect) {
-    drawCanvasNode(ctx, draftRect, { board, runtime, rerender });
+    drawNodeTree(ctx, board, draftRect, runtime, rerender);
   }
 
   if (draftFreehand) {
-    drawCanvasNode(ctx, draftFreehand, { board, runtime, rerender });
+    drawNodeTree(ctx, board, draftFreehand, runtime, rerender);
   }
 
   if (draftConnector) {
-    drawCanvasNode(ctx, draftConnector, { board, runtime, rerender });
+    drawNodeTree(ctx, board, draftConnector, runtime, rerender);
   }
 
-  const hoveredNode = board.nodes.find((node) => node.id === hoveredId && node.id !== selectedId);
+  const activeContainer = getNodeById(board.nodes, activeContainerId);
+  if (activeContainer && isContainerNode(activeContainer)) {
+    drawActiveContainerOverlay(ctx, board, activeContainer, width, height);
+  }
+
+  const hoveredNode = hoveredId && hoveredId !== selectedId ? getNodeById(board.nodes, hoveredId) : null;
   if (hoveredNode) {
     drawNodeChrome(ctx, hoveredNode, board, 'hovered');
   }
 
-  const selectedNode = board.nodes.find((node) => node.id === selectedId);
+  const selectedNode = getNodeById(board.nodes, selectedId);
   if (selectedNode) {
     drawNodeChrome(ctx, selectedNode, board, 'selected');
   }

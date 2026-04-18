@@ -2,12 +2,27 @@ import type {
   AssetRecord,
   BoardDoc,
   CanvasNode,
+  ContainerNode,
   CanvasProject,
   CanvasStoreState,
   GenerationJob,
   Tool,
 } from '../types/canvas';
-import { isConnectorAttachedToNode, isConnectorNode } from '@infinite-canvas/canvas-engine';
+import {
+  appendNodeToContainer,
+  bringHierarchicalNodeForward,
+  dissolveContainer,
+  getContainerById,
+  getHierarchicalNodeById,
+  getNodeParentContainerId,
+  isConnectorAttachedToNode,
+  isConnectorNode,
+  moveNodeOutOfContainer as moveNodeOutOfContainerInTree,
+  moveNodeToContainer,
+  removeHierarchicalNodeById,
+  sendHierarchicalNodeBackward,
+  upsertHierarchicalNode,
+} from '@infinite-canvas/canvas-engine';
 
 const MAX_HISTORY = 100;
 
@@ -41,6 +56,7 @@ export function createInitialStore(project: CanvasProject): CanvasStoreState {
     project,
     tool: 'select',
     selectedId: null,
+    activeContainerId: null,
     past: [],
     future: [],
   };
@@ -63,6 +79,10 @@ export function setTool(state: CanvasStoreState, tool: Tool): CanvasStoreState {
 
 export function setSelectedId(state: CanvasStoreState, selectedId: string | null): CanvasStoreState {
   return { ...state, selectedId };
+}
+
+export function setActiveContainerId(state: CanvasStoreState, activeContainerId: string | null): CanvasStoreState {
+  return { ...state, activeContainerId };
 }
 
 export function replaceProjectNoHistory(state: CanvasStoreState, project: CanvasProject): CanvasStoreState {
@@ -115,6 +135,7 @@ export function undo(state: CanvasStoreState): CanvasStoreState {
     ...state,
     project: previous,
     selectedId: null,
+    activeContainerId: null,
     past: state.past.slice(0, -1),
     future: [state.project, ...state.future],
   };
@@ -130,31 +151,29 @@ export function redo(state: CanvasStoreState): CanvasStoreState {
     ...state,
     project: next,
     selectedId: null,
+    activeContainerId: null,
     past: limitHistory([...state.past, state.project]),
     future: state.future.slice(1),
   };
 }
 
 export function upsertNode(nodes: CanvasNode[], node: CanvasNode): CanvasNode[] {
-  const index = nodes.findIndex((item) => item.id === node.id);
-  if (index === -1) {
+  const existing = getHierarchicalNodeById(nodes, node.id);
+  if (!existing) {
     return [...nodes, node];
   }
 
-  const next = nodes.slice();
-  next[index] = node;
-  return next;
+  return upsertHierarchicalNode(nodes, node);
 }
 
 export function removeNodeById(nodes: CanvasNode[], id: string): CanvasNode[] {
-  return nodes.filter((node) => node.id !== id && (!isConnectorNode(node) || !isConnectorAttachedToNode(node, id)));
+  return removeHierarchicalNodeById(nodes, id).filter(
+    (node) => !isConnectorNode(node) || !isConnectorAttachedToNode(node, id),
+  );
 }
 
 export function getNodeById(nodes: CanvasNode[], id: string | null): CanvasNode | null {
-  if (!id) {
-    return null;
-  }
-  return nodes.find((node) => node.id === id) ?? null;
+  return getHierarchicalNodeById(nodes, id);
 }
 
 export function getAssetById(assets: AssetRecord[], id: string | undefined): AssetRecord | null {
@@ -187,23 +206,84 @@ export function upsertJob(jobs: GenerationJob[], job: GenerationJob): Generation
 }
 
 export function bringNodeForward(nodes: CanvasNode[], id: string): CanvasNode[] {
-  const index = nodes.findIndex((node) => node.id === id);
-  if (index === -1 || index === nodes.length - 1) {
-    return nodes;
-  }
-
-  const next = nodes.slice();
-  [next[index], next[index + 1]] = [next[index + 1], next[index]];
-  return next;
+  return bringHierarchicalNodeForward(nodes, id);
 }
 
 export function sendNodeBackward(nodes: CanvasNode[], id: string): CanvasNode[] {
-  const index = nodes.findIndex((node) => node.id === id);
-  if (index <= 0) {
+  return sendHierarchicalNodeBackward(nodes, id);
+}
+
+export function createContainerNode(x: number, y: number, w = 280, h = 180): ContainerNode {
+  return {
+    id: crypto.randomUUID ? `node_${crypto.randomUUID()}` : `node_${Date.now()}`,
+    type: 'container',
+    x,
+    y,
+    w,
+    h,
+    children: [],
+    name: '容器',
+  };
+}
+
+export function wrapNodeInNewContainer(nodes: CanvasNode[], nodeId: string): CanvasNode[] {
+  const node = getHierarchicalNodeById(nodes, nodeId);
+  const parentContainerId = getNodeParentContainerId(nodes, nodeId);
+  if (!node || isConnectorNode(node) || node.type === 'container' || parentContainerId) {
     return nodes;
   }
 
-  const next = nodes.slice();
-  [next[index], next[index - 1]] = [next[index - 1], next[index]];
-  return next;
+  const padding = 24;
+  const worldNode = node;
+  let container: ContainerNode;
+  if (worldNode.type === 'freehand') {
+    const minX = Math.min(...worldNode.points.map((point) => point.x));
+    const minY = Math.min(...worldNode.points.map((point) => point.y));
+    const maxX = Math.max(...worldNode.points.map((point) => point.x));
+    const maxY = Math.max(...worldNode.points.map((point) => point.y));
+    container = createContainerNode(minX - padding, minY - padding, maxX - minX + padding * 2, maxY - minY + padding * 2);
+    container.children = [
+      {
+        ...worldNode,
+        points: worldNode.points.map((point) => ({
+          x: point.x - container.x,
+          y: point.y - container.y,
+        })),
+      },
+    ];
+  } else {
+    container = createContainerNode(worldNode.x - padding, worldNode.y - padding, worldNode.w + padding * 2, worldNode.h + padding * 2);
+    container.children = [
+      {
+        ...worldNode,
+        x: worldNode.x - container.x,
+        y: worldNode.y - container.y,
+      },
+    ];
+  }
+
+  const withoutNode = removeNodeById(nodes, nodeId);
+  return [...withoutNode, container];
 }
+
+export function moveNodeOutOfContainer(nodes: CanvasNode[], nodeId: string): CanvasNode[] {
+  return moveNodeOutOfContainerInTree(nodes, nodeId);
+}
+
+export function insertNodeIntoContainer(nodes: CanvasNode[], containerId: string, node: CanvasNode): CanvasNode[] {
+  if (node.type === 'connector' || node.type === 'container') {
+    return nodes;
+  }
+  return appendNodeToContainer(nodes, containerId, node);
+}
+
+export function dissolveContainerNode(nodes: CanvasNode[], containerId: string): CanvasNode[] {
+  return dissolveContainer(nodes, containerId);
+}
+
+export function canExitActiveContainer(nodes: CanvasNode[], activeContainerId: string | null): boolean {
+  return !!getContainerById(nodes, activeContainerId);
+}
+
+export { moveNodeToContainer };
+export { getNodeParentContainerId };

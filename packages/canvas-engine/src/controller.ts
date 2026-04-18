@@ -1,9 +1,11 @@
 import {
   clampScale,
   findAnchorTarget,
+  getAllDescendantNodes,
   getConnectorPathMode,
   getConnectorWaypointHandles,
   getDefaultConnectorWaypoints,
+  getNodesInContext,
   hitCanvasNodeResizeHandle,
   isConnectorNode,
   maybeAppendPoint,
@@ -14,6 +16,8 @@ import {
   scaleTolerance,
   screenToWorld,
   translateCanvasNode,
+  worldPointToContainerLocal,
+  worldPointToNodeLocal,
   zoomAtScreenPoint,
 } from './index';
 import {
@@ -67,6 +71,7 @@ export interface CanvasControllerPointerInput {
 export interface CanvasControllerOptions<TProject extends CanvasProjectLike> {
   project: TProject;
   selectedId: string | null;
+  getActiveContainerId: () => string | null;
   getTool: () => ToolLike;
   isSpacePressed: () => boolean;
   getConnectorPathMode: () => ConnectorPathMode;
@@ -76,6 +81,7 @@ export interface CanvasControllerOptions<TProject extends CanvasProjectLike> {
   createConnectorNode: (anchor: AnchorTargetLike, point: Point, pathMode: ConnectorPathMode) => ConnectorNode;
   getNodeById: (nodes: CanvasNode[], id: string | null) => CanvasNode | null;
   upsertNode: (nodes: CanvasNode[], node: CanvasNode) => CanvasNode[];
+  insertNodeIntoContainer: (nodes: CanvasNode[], containerId: string, node: CanvasNode) => CanvasNode[];
   onSelect: (id: string | null) => void;
   onReplaceProject: (project: TProject) => void;
   onCommitProject: (project: TProject) => void;
@@ -135,6 +141,21 @@ function hitConnectorHandle(
   return null;
 }
 
+function findConnectorHandleTarget(
+  board: BoardDoc,
+  point: Point,
+): { node: ConnectorNode; handle: ConnectorHandle } | null {
+  const connectors = getAllDescendantNodes(board.nodes).filter(isConnectorNode);
+  for (let index = connectors.length - 1; index >= 0; index -= 1) {
+    const node = connectors[index];
+    const handle = hitConnectorHandle(node, point, board.viewport.scale, board);
+    if (handle) {
+      return { node, handle };
+    }
+  }
+  return null;
+}
+
 export function createCanvasInteractionController<TProject extends CanvasProjectLike>(
   options: CanvasControllerOptions<TProject>,
 ): CanvasInteractionController<TProject> {
@@ -187,6 +208,11 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       ...projectRef,
       board,
     };
+  }
+
+  function selectNode(id: string | null): void {
+    selectedIdRef = id;
+    options.onSelect(id);
   }
 
   function flushScheduledReplace(): void {
@@ -410,6 +436,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       }
 
       const tolerance = scaleTolerance(6, currentBoard.viewport.scale);
+      const contextNodes = getNodesInContext(currentBoard, options.getActiveContainerId());
 
       if (options.getTool() === 'select') {
         const selectedNode = options.getNodeById(currentBoard.nodes, selectedIdRef);
@@ -436,8 +463,25 @@ export function createCanvasInteractionController<TProject extends CanvasProject
           return;
         }
 
-        const pickedId = pickTopCanvasNode(currentBoard.nodes, worldPoint, tolerance, currentBoard);
+        const pickedId = pickTopCanvasNode(contextNodes, worldPoint, tolerance, currentBoard);
         const pickedNode = options.getNodeById(currentBoard.nodes, pickedId);
+
+        const globalConnectorHandle = findConnectorHandleTarget(currentBoard, worldPoint);
+        if (globalConnectorHandle) {
+          activeNodeId = globalConnectorHandle.node.id;
+          activeConnectorHandle = globalConnectorHandle.handle;
+          beforeMutation = currentProject;
+          selectNode(globalConnectorHandle.node.id);
+          updateState({
+            pointerMode:
+              globalConnectorHandle.handle.kind === 'endpoint' ? 'editing-connector-end' : 'editing-connector-waypoint',
+            draftConnector: globalConnectorHandle.node,
+            hoveredNodeId: null,
+            hoveredAnchor: null,
+            activeConnectorHandle: globalConnectorHandle.handle,
+          });
+          return;
+        }
 
         if (pickedNode && isConnectorNode(pickedNode)) {
           const connectorHandle = hitConnectorHandle(pickedNode, worldPoint, currentBoard.viewport.scale, currentBoard);
@@ -445,7 +489,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
             activeNodeId = pickedNode.id;
             activeConnectorHandle = connectorHandle;
             beforeMutation = currentProject;
-            options.onSelect(pickedNode.id);
+            selectNode(pickedNode.id);
             updateState({
               pointerMode:
                 connectorHandle.kind === 'endpoint' ? 'editing-connector-end' : 'editing-connector-waypoint',
@@ -458,7 +502,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
           }
         }
 
-        options.onSelect(pickedId);
+        selectNode(pickedId);
 
         if (pickedId && pickedNode && !isConnectorNode(pickedNode)) {
           startNodeInteraction('dragging-node', pickedId, worldPoint);
@@ -467,10 +511,11 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       }
 
       if (options.getTool() === 'rect') {
-        options.onSelect(null);
+        selectNode(null);
+        const localPoint = worldPointToContainerLocal(currentBoard, options.getActiveContainerId(), worldPoint);
         updateState({
           pointerMode: 'drawing-rect',
-          draftRect: options.createRectNode(worldPoint),
+          draftRect: options.createRectNode(localPoint),
           hoveredNodeId: null,
           hoveredAnchor: null,
         });
@@ -478,10 +523,11 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       }
 
       if (options.getTool() === 'freehand') {
-        options.onSelect(null);
+        selectNode(null);
+        const localPoint = worldPointToContainerLocal(currentBoard, options.getActiveContainerId(), worldPoint);
         updateState({
           pointerMode: 'drawing-freehand',
-          draftFreehand: options.createFreehandNode(worldPoint),
+          draftFreehand: options.createFreehandNode(localPoint),
           hoveredNodeId: null,
           hoveredAnchor: null,
         });
@@ -489,18 +535,22 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       }
 
       if (options.getTool() === 'text') {
-        const node = options.createTextNode(worldPoint);
+        const localPoint = worldPointToContainerLocal(currentBoard, options.getActiveContainerId(), worldPoint);
+        const node = options.createTextNode(localPoint);
+        const activeContainerId = options.getActiveContainerId();
         const nextProject = updateBoard({
           ...currentBoard,
-          nodes: [...currentBoard.nodes, node],
+          nodes: activeContainerId
+            ? options.insertNodeIntoContainer(currentBoard.nodes, activeContainerId, node)
+            : [...currentBoard.nodes, node],
         });
         options.onCommitProject(nextProject);
-        options.onSelect(node.id);
+        selectNode(node.id);
         return;
       }
 
       if (options.getTool() === 'connector') {
-        options.onSelect(null);
+        selectNode(null);
         const anchor = findAnchorTarget(currentBoard.nodes, worldPoint, scaleTolerance(12, currentBoard.viewport.scale));
         updateState({
           hoveredNodeId: null,
@@ -568,8 +618,9 @@ export function createCanvasInteractionController<TProject extends CanvasProject
         !options.isSpacePressed()
       ) {
         if (options.getTool() === 'select') {
+          const contextNodes = getNodesInContext(currentBoard, options.getActiveContainerId());
           const hoveredId = pickTopCanvasNode(
-            currentBoard.nodes,
+            contextNodes,
             worldPoint,
             scaleTolerance(6, currentBoard.viewport.scale),
             currentBoard,
@@ -721,11 +772,13 @@ export function createCanvasInteractionController<TProject extends CanvasProject
         if (!node) {
           return;
         }
+        const activeContainerId = options.getActiveContainerId();
+        const snapNodes = getNodesInContext(currentBoard, activeContainerId);
 
         const snapResult = computeDragSnap({
           node,
           delta: { x: dx, y: dy },
-          nodes: currentBoard.nodes,
+          nodes: snapNodes,
           viewport: currentBoard.viewport,
         });
 
@@ -745,22 +798,24 @@ export function createCanvasInteractionController<TProject extends CanvasProject
         if (!node) {
           return;
         }
+        const localPointer = worldPointToNodeLocal(currentBoard, activeNodeId, worldPoint);
 
         scheduleReplaceProject(
           updateBoard({
             ...currentBoard,
-            nodes: options.upsertNode(currentBoard.nodes, resizeCanvasNode(node, worldPoint)),
+            nodes: options.upsertNode(currentBoard.nodes, resizeCanvasNode(node, localPointer)),
           }),
         );
         return;
       }
 
       if (state.pointerMode === 'drawing-rect' && state.draftRect) {
+        const localPoint = worldPointToContainerLocal(currentBoard, options.getActiveContainerId(), worldPoint);
         updateState({
           draftRect: {
             ...state.draftRect,
-            w: worldPoint.x - state.draftRect.x,
-            h: worldPoint.y - state.draftRect.y,
+            w: localPoint.x - state.draftRect.x,
+            h: localPoint.y - state.draftRect.y,
           },
         });
         renderCurrent();
@@ -768,9 +823,10 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       }
 
       if (state.pointerMode === 'drawing-freehand' && state.draftFreehand) {
+        const localPoint = worldPointToContainerLocal(currentBoard, options.getActiveContainerId(), worldPoint);
         const points = maybeAppendPoint(
           state.draftFreehand.points,
-          worldPoint,
+          localPoint,
           scaleTolerance(1.5, currentBoard.viewport.scale),
         );
         if (points !== state.draftFreehand.points) {
@@ -814,7 +870,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
             nodes: [...currentBoard.nodes, state.draftConnector],
           });
           options.onCommitProject(nextProject);
-          options.onSelect(state.draftConnector.id);
+          selectNode(state.draftConnector.id);
         }
       }
 
@@ -833,10 +889,10 @@ export function createCanvasInteractionController<TProject extends CanvasProject
             nodes: options.upsertNode(currentBoard.nodes, state.draftConnector),
           });
           options.onCommitProject(nextProject);
-          options.onSelect(state.draftConnector.id);
+          selectNode(state.draftConnector.id);
         } else {
           options.onReplaceProject(beforeMutation);
-          options.onSelect(activeNodeId);
+          selectNode(activeNodeId);
         }
       }
 
@@ -846,29 +902,35 @@ export function createCanvasInteractionController<TProject extends CanvasProject
           nodes: options.upsertNode(currentBoard.nodes, state.draftConnector),
         });
         options.onCommitProject(nextProject);
-        options.onSelect(activeNodeId);
+        selectNode(activeNodeId);
       }
 
       if (state.pointerMode === 'drawing-rect' && state.draftRect) {
         if (Math.abs(state.draftRect.w) > 1 && Math.abs(state.draftRect.h) > 1) {
+          const activeContainerId = options.getActiveContainerId();
           const nextProject = updateBoard({
             ...currentBoard,
-            nodes: [...currentBoard.nodes, state.draftRect],
+            nodes: activeContainerId
+              ? options.insertNodeIntoContainer(currentBoard.nodes, activeContainerId, state.draftRect)
+              : [...currentBoard.nodes, state.draftRect],
           });
           options.onCommitProject(nextProject);
-          options.onSelect(state.draftRect.id);
+          selectNode(state.draftRect.id);
         }
         updateState({ draftRect: null });
       }
 
       if (state.pointerMode === 'drawing-freehand' && state.draftFreehand) {
         if (state.draftFreehand.points.length > 1) {
+          const activeContainerId = options.getActiveContainerId();
           const nextProject = updateBoard({
             ...currentBoard,
-            nodes: [...currentBoard.nodes, state.draftFreehand],
+            nodes: activeContainerId
+              ? options.insertNodeIntoContainer(currentBoard.nodes, activeContainerId, state.draftFreehand)
+              : [...currentBoard.nodes, state.draftFreehand],
           });
           options.onCommitProject(nextProject);
-          options.onSelect(state.draftFreehand.id);
+          selectNode(state.draftFreehand.id);
         }
         updateState({ draftFreehand: null });
       }

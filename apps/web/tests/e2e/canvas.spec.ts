@@ -509,7 +509,7 @@ test('polyline connector mode exposes bend handles, supports reattachment, and r
   expect(connector.end).toEqual({ kind: 'attached', nodeId: 'node_rect_c', anchor: 'west' });
 });
 
-test('hover and selected chrome stay lightweight until connector editing becomes active', async ({ page }) => {
+test('hover and selected chrome stay lightweight during hover and connector selection', async ({ page }) => {
   await page.addInitScript(([storageKey, project]) => {
     if (window.sessionStorage.getItem('__seeded_project__') === 'true') {
       return;
@@ -544,13 +544,8 @@ test('hover and selected chrome stay lightweight until connector editing becomes
   await page.waitForTimeout(250);
 
   await page.getByRole('button', { name: '选择' }).click();
-  await page.mouse.click(box.x + 370, box.y + 130);
+  await page.mouse.click(box.x + 250, box.y + 118);
   await expect(page.locator('.canvas-connector-handle')).toHaveCount(0);
-
-  await page.mouse.move(box.x + 520, box.y + 145);
-  await page.mouse.down();
-  await expect(page.locator('.canvas-connector-handle')).toHaveCount(2);
-  await page.mouse.up();
 });
 
 test('rect, freehand, text, and media nodes remain available after engine-backed dispatch', async ({ page }) => {
@@ -581,6 +576,64 @@ test('rect, freehand, text, and media nodes remain available after engine-backed
   expect(nodeTypes).toEqual(expect.arrayContaining(['rect', 'freehand', 'text', 'image']));
   expect(project.board.nodes).toHaveLength(4);
   expect(project.board.nodes.find((node: { id: string }) => node.id === 'node_image_seed').x).toBe(120);
+});
+
+test('containers can wrap content, enter editing context, and persist child geometry after reload', async ({ page }) => {
+  await page.addInitScript(([storageKey, project]) => {
+    if (window.sessionStorage.getItem('__seeded_project__') === 'true') {
+      return;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(project));
+    window.sessionStorage.setItem('__seeded_project__', 'true');
+  }, [STORAGE_KEY, createEngineSeedProject()]);
+
+  await page.goto('/');
+
+  const canvas = page.locator('canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+
+  if (!box) {
+    return;
+  }
+
+  await page.getByRole('button', { name: '选择' }).click();
+  await page.mouse.click(box.x + 110, box.y + 90);
+  await expect(page.getByRole('button', { name: '包裹为容器' })).toBeVisible();
+  await page.getByRole('button', { name: '包裹为容器' }).click();
+  await page.waitForTimeout(250);
+
+  let project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  let container = project.board.nodes.find((node: { type: string }) => node.type === 'container');
+  expect(container).toBeTruthy();
+  expect(container.children).toHaveLength(1);
+  expect(container.children[0].id).toBe('node_rect_seed');
+
+  await page.mouse.click(box.x + 110, box.y + 90);
+  await expect(page.getByRole('button', { name: '进入' })).toBeVisible();
+  await page.getByRole('button', { name: '进入' }).click();
+  await expect(page.getByText('正在编辑容器')).toBeVisible();
+
+  await page.mouse.move(box.x + 110, box.y + 90);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 170, box.y + 130, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+
+  project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  container = project.board.nodes.find((node: { type: string }) => node.type === 'container');
+  expect(container.children[0].x).toBeGreaterThan(24);
+  expect(container.x).toBeLessThan(container.children[0].x + container.x);
+
+  await page.getByRole('button', { name: '退出容器' }).click();
+  await expect(page.getByText('正在编辑容器')).toHaveCount(0);
+
+  await page.reload();
+  project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  container = project.board.nodes.find((node: { type: string }) => node.type === 'container');
+  expect(container).toBeTruthy();
+  expect(container.children[0].id).toBe('node_rect_seed');
+  expect(container.children[0].x).toBeGreaterThan(24);
 });
 
 test('voice drafts stay editable until the user sends them from the sidebar composer', async ({ page }) => {

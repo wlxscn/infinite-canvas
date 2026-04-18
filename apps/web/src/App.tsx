@@ -58,11 +58,20 @@ function App() {
     isSpacePressed,
     canUndo,
     canRedo,
+    activeContainerId,
+    canExitContainer,
+    selectedParentContainerId,
     handleSelect,
+    handleEnterContainer,
+    handleExitContainer,
     handleCommitProject,
     handleReplaceProject,
     handleFinalizeMutation,
     nudgeLayer,
+    createContainerAtViewportCenter,
+    wrapSelectionInContainer,
+    moveSelectionOutOfContainer,
+    dissolveSelectedContainer,
     exportProjectJson,
   } = useCanvasWorkspaceController({
     state,
@@ -136,7 +145,31 @@ function App() {
                 style={selectionToolbarStyle}
                 onMoveBackward={() => nudgeLayer('backward')}
                 onMoveForward={() => nudgeLayer('forward')}
+                onEnterContainer={selectedNode.type === 'container' ? () => handleEnterContainer(selectedNode.id) : undefined}
+                onWrapInContainer={
+                  !activeContainerId && selectedNode.type !== 'container' && selectedNode.type !== 'connector'
+                    ? wrapSelectionInContainer
+                    : undefined
+                }
+                onMoveOutOfContainer={
+                  activeContainerId &&
+                  selectedParentContainerId === activeContainerId &&
+                  selectedNode.type !== 'connector' &&
+                  selectedNode.type !== 'container'
+                    ? moveSelectionOutOfContainer
+                    : undefined
+                }
+                onDissolveContainer={selectedNode.type === 'container' ? dissolveSelectedContainer : undefined}
               />
+            ) : null}
+
+            {activeContainerId && canExitContainer ? (
+              <div className="container-context-bar">
+                <span>正在编辑容器</span>
+                <button type="button" className="toolbar-icon-btn" onClick={handleExitContainer}>
+                  退出容器
+                </button>
+              </div>
             ) : null}
 
             <div ref={canvasStageWrapRef} className="canvas-stage-wrap">
@@ -145,6 +178,7 @@ function App() {
                 tool={state.tool}
                 connectorPathMode={connectorPathMode}
                 selectedId={state.selectedId}
+                activeContainerId={activeContainerId}
                 isSpacePressed={isSpacePressed}
                 onInteractionActiveChange={setIsCanvasInteractionActive}
                 onSelect={handleSelect}
@@ -159,6 +193,7 @@ function App() {
               tools={TOOLS}
               activeTool={state.tool}
               connectorPathMode={connectorPathMode}
+              onCreateContainer={createContainerAtViewportCenter}
               onSelectTool={(tool) => setState((prev) => setTool(prev, tool))}
               onSelectConnectorPathMode={setConnectorPathMode}
             />

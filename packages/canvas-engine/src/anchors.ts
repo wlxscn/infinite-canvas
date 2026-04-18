@@ -1,4 +1,5 @@
 import { normalizeBounds, type Bounds } from './geometry';
+import { getAllDescendantNodes, getNodeById, isContainerNode, resolveNodeToWorld } from './hierarchy';
 import type {
   AnchorId,
   AttachedConnectorEndpoint,
@@ -44,8 +45,8 @@ export function isAttachedConnectorEndpoint(endpoint: ConnectorEndpoint): endpoi
   return endpoint.kind === 'attached';
 }
 
-export function getAnchorPoint(node: BoxNode, anchor: AnchorId): Point {
-  const bounds = getBoxBounds(node);
+export function getAnchorPoint(node: BoxNode, anchor: AnchorId, board?: BoardDoc): Point {
+  const bounds = getBoxBounds(resolveNodeToWorld(node, board));
   const centerX = bounds.x + bounds.w / 2;
   const centerY = bounds.y + bounds.h / 2;
 
@@ -61,7 +62,7 @@ export function getAnchorPoint(node: BoxNode, anchor: AnchorId): Point {
   }
 }
 
-export function getNodeAnchors(node: CanvasNode): AnchorTarget[] {
+export function getNodeAnchors(node: CanvasNode, board?: BoardDoc): AnchorTarget[] {
   if (!isBoxNode(node)) {
     return [];
   }
@@ -69,7 +70,7 @@ export function getNodeAnchors(node: CanvasNode): AnchorTarget[] {
   return (['north', 'east', 'south', 'west'] as const).map((anchor) => ({
     nodeId: node.id,
     anchor,
-    point: getAnchorPoint(node, anchor),
+    point: getAnchorPoint(node, anchor, board),
   }));
 }
 
@@ -81,14 +82,24 @@ export function findAnchorTarget(
 ): AnchorTarget | null {
   let closest: AnchorTarget | null = null;
   let closestDistance = Number.POSITIVE_INFINITY;
+  const allNodes = getAllDescendantNodes(nodes);
 
-  for (let index = nodes.length - 1; index >= 0; index -= 1) {
-    const node = nodes[index];
-    if (!isBoxNode(node) || node.id === options.excludeNodeId || node.id === options.excludeConnectorId) {
+  for (let index = allNodes.length - 1; index >= 0; index -= 1) {
+    const node = allNodes[index];
+    if (
+      !isBoxNode(node) ||
+      isContainerNode(node) ||
+      node.id === options.excludeNodeId ||
+      node.id === options.excludeConnectorId
+    ) {
       continue;
     }
 
-    for (const anchor of getNodeAnchors(node)) {
+    for (const anchor of getNodeAnchors(node, {
+      version: 2,
+      viewport: { tx: 0, ty: 0, scale: 1 },
+      nodes,
+    })) {
       const distance = Math.hypot(anchor.point.x - point.x, anchor.point.y - point.y);
       if (distance <= tolerance && distance < closestDistance) {
         closest = anchor;
@@ -105,12 +116,12 @@ export function resolveConnectorEndpoint(endpoint: ConnectorEndpoint, board: Boa
     return { x: endpoint.x, y: endpoint.y };
   }
 
-  const targetNode = board.nodes.find((node) => node.id === endpoint.nodeId);
+  const targetNode = getNodeById(board.nodes, endpoint.nodeId);
   if (!targetNode || !isBoxNode(targetNode)) {
     return null;
   }
 
-  return getAnchorPoint(targetNode, endpoint.anchor);
+  return getAnchorPoint(targetNode, endpoint.anchor, board);
 }
 
 export function resolveConnectorPoints(node: ConnectorNode, board: BoardDoc): { start: Point; end: Point } | null {

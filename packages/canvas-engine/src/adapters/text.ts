@@ -6,7 +6,7 @@ import { drawNormalizedRect, getBoxBounds, hitResizeHandle, resizeBoxNode, trans
 export const textNodeAdapter: NodeAdapter<TextNode, BoardDoc, unknown> = {
   type: 'text',
   draw(ctx, node, env) {
-    const bounds = getBoxBounds(node);
+    const bounds = getBoxBounds(node, env.board);
     drawNormalizedRect(bounds, env.board.viewport, (x, y, w, h) => {
       const padding = 8 * env.board.viewport.scale;
       const fontSize = node.fontSize * env.board.viewport.scale;
@@ -28,9 +28,11 @@ export const textNodeAdapter: NodeAdapter<TextNode, BoardDoc, unknown> = {
       ctx.restore();
     });
   },
-  getBounds: getBoxBounds,
-  hitTest(node, point, tolerance) {
-    return pointInBounds(point, getBoxBounds(node), tolerance);
+  getBounds(node, board) {
+    return getBoxBounds(node, board);
+  },
+  hitTest(node, point, tolerance, board) {
+    return pointInBounds(point, getBoxBounds(node, board), tolerance);
   },
   translate(node, delta) {
     return translateBoxNode(node, delta);
@@ -38,7 +40,7 @@ export const textNodeAdapter: NodeAdapter<TextNode, BoardDoc, unknown> = {
   resize(node, pointer) {
     return resizeBoxNode(node, pointer);
   },
-  hitResizeHandle(node, point, scale, handleSize) {
-    return hitResizeHandle(getBoxBounds(node), point, scale, handleSize);
+  hitResizeHandle(node, point, scale, handleSize, board) {
+    return hitResizeHandle(getBoxBounds(node, board), point, scale, handleSize);
   },
 };

@@ -1,4 +1,5 @@
 import {
+  getAllDescendantNodes,
   getCanvasNodeBounds,
   normalizeBounds,
   worldToScreen,
@@ -73,7 +74,7 @@ export function VideoOverlayLayer({ board, assets, selectedId, hoveredId }: Vide
   const assetMap = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
 
   const videoNodes = useMemo(
-    () => board.nodes.filter((node): node is VideoNode => node.type === 'video'),
+    () => getAllDescendantNodes(board.nodes).filter((node): node is VideoNode => node.type === 'video'),
     [board.nodes],
   );
 

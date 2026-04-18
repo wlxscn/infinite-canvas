@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { getCanvasNodeBounds, normalizeBounds, worldToScreen } from '@infinite-canvas/canvas-engine';
+import { getAllDescendantNodes, getCanvasNodeBounds, normalizeBounds, worldToScreen } from '@infinite-canvas/canvas-engine';
 import { getAssetById } from '../state/store';
 import type { CanvasNode, CanvasStoreState } from '../types/canvas';
 
@@ -14,7 +14,7 @@ export function useWorkspaceViewModel(state: CanvasStoreState, selectedNode: Can
 
   const statsText = useMemo(
     () => ({
-      nodeCount: `节点 ${state.project.board.nodes.length}`,
+      nodeCount: `节点 ${getAllDescendantNodes(state.project.board.nodes).length}`,
       scaleText: `${(state.project.board.viewport.scale * 100).toFixed(0)}%`,
       assetCount: `资产 ${state.project.assets.length}`,
     }),
@@ -41,7 +41,7 @@ export function useWorkspaceViewModel(state: CanvasStoreState, selectedNode: Can
     selectedAsset,
     statsText,
     selectionToolbarStyle,
-    hasCanvasContent: state.project.board.nodes.length > 0 || state.project.assets.length > 0,
+    hasCanvasContent: getAllDescendantNodes(state.project.board.nodes).length > 0 || state.project.assets.length > 0,
     latestJob: state.project.jobs[0] ?? null,
   };
 }

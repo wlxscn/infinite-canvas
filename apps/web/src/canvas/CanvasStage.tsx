@@ -1,6 +1,7 @@
 import {
   createCanvasInteractionController,
   createInitialInteractionState,
+  getAllDescendantNodes,
   getConnectorWaypointHandles,
   getDefaultConnectorWaypoints,
   getNodeAnchors,
@@ -28,7 +29,7 @@ import { VideoOverlayLayer } from './VideoOverlayLayer';
 import { useCanvasRulerModel, type CanvasRulerAxisModel } from '../hooks/useCanvasRulerModel';
 import { createId } from '../utils/id';
 import type { CanvasNode, CanvasProject, Point, Tool } from '../types/canvas';
-import { getNodeById, upsertNode } from '../state/store';
+import { getNodeById, insertNodeIntoContainer, upsertNode } from '../state/store';
 
 const RULER_SIZE = 28;
 
@@ -37,6 +38,7 @@ interface CanvasStageProps {
   tool: Tool;
   connectorPathMode: ConnectorPathMode;
   selectedId: string | null;
+  activeContainerId: string | null;
   isSpacePressed: boolean;
   onInteractionActiveChange: (active: boolean) => void;
   onSelect: (id: string | null) => void;
@@ -137,6 +139,7 @@ function CanvasAnchorOverlay({
   tool,
   pointerMode,
   selectedNode,
+  draftConnector,
   hoveredAnchor,
   activeConnectorHandle,
 }: {
@@ -144,31 +147,38 @@ function CanvasAnchorOverlay({
   tool: Tool;
   pointerMode: CanvasInteractionState['pointerMode'];
   selectedNode: CanvasNode | null;
+  draftConnector: CanvasInteractionState['draftConnector'];
   hoveredAnchor: { nodeId: string; anchor: string } | null;
   activeConnectorHandle: ConnectorHandle | null;
 }) {
   const isConnectorEditing =
     pointerMode === 'editing-connector-end' || pointerMode === 'editing-connector-waypoint';
   const shouldShowAnchors = tool === 'connector' || pointerMode === 'drawing-connector' || pointerMode === 'editing-connector-end';
+  const editingConnector =
+    isConnectorEditing && draftConnector && isConnectorNode(draftConnector)
+      ? draftConnector
+      : selectedNode && isConnectorNode(selectedNode)
+        ? selectedNode
+        : null;
   const anchors = useMemo(() => {
     if (!shouldShowAnchors) {
       return [];
     }
 
-    return board.nodes.flatMap((node) =>
-      getNodeAnchors(node).map((anchor) => ({
+    return getAllDescendantNodes(board.nodes).flatMap((node) =>
+      getNodeAnchors(node, board).map((anchor) => ({
         ...anchor,
         screenPoint: worldToScreen(anchor.point, board.viewport),
       })),
     );
-  }, [board.nodes, board.viewport, shouldShowAnchors]);
+  }, [board, shouldShowAnchors]);
 
   const connectorHandles = useMemo(() => {
-    if (!selectedNode || !isConnectorNode(selectedNode) || !isConnectorEditing) {
+    if (!editingConnector || !isConnectorEditing) {
       return null;
     }
 
-    const points = resolveConnectorPoints(selectedNode, board);
+    const points = resolveConnectorPoints(editingConnector, board);
     if (!points) {
       return null;
     }
@@ -176,9 +186,9 @@ function CanvasAnchorOverlay({
     return {
       start: worldToScreen(points.start, board.viewport),
       end: worldToScreen(points.end, board.viewport),
-      waypoints: getConnectorWaypointHandles(selectedNode).map((point) => worldToScreen(point, board.viewport)),
+      waypoints: getConnectorWaypointHandles(editingConnector).map((point) => worldToScreen(point, board.viewport)),
     };
-  }, [board, isConnectorEditing, selectedNode]);
+  }, [board, editingConnector, isConnectorEditing]);
 
   if (!shouldShowAnchors && !connectorHandles) {
     return null;
@@ -241,6 +251,7 @@ export function CanvasStage({
   tool,
   connectorPathMode,
   selectedId,
+  activeContainerId,
   isSpacePressed,
   onInteractionActiveChange,
   onSelect,
@@ -275,12 +286,13 @@ export function CanvasStage({
         assets: nextProject.assets,
         selectedId: selectedNodeId,
         hoveredId: state.hoveredNodeId,
+        activeContainerId,
         draftRect: state.draftRect,
         draftFreehand: state.draftFreehand,
         draftConnector: state.draftConnector,
       });
     },
-    [],
+    [activeContainerId],
   );
 
   useEffect(() => {
@@ -302,6 +314,7 @@ export function CanvasStage({
     const controller = createCanvasInteractionController({
       project: initialProjectRef.current,
       selectedId: initialSelectedIdRef.current,
+      getActiveContainerId: () => activeContainerId,
       getTool: () => toolRef.current,
       isSpacePressed: () => isSpacePressedRef.current,
       getConnectorPathMode: () => connectorPathMode,
@@ -354,6 +367,7 @@ export function CanvasStage({
       }),
       getNodeById,
       upsertNode,
+      insertNodeIntoContainer,
       onSelect: (id) => onSelectRef.current(id),
       onReplaceProject: (nextProject) => onReplaceProjectRef.current(nextProject),
       onCommitProject: (nextProject) => onCommitProjectRef.current(nextProject),
@@ -371,7 +385,7 @@ export function CanvasStage({
       controller.dispose();
       controllerRef.current = null;
     };
-  }, [connectorPathMode, renderProjectNow]);
+  }, [activeContainerId, connectorPathMode, renderProjectNow]);
 
   useEffect(() => {
     controllerRef.current?.syncProject(project);
@@ -496,6 +510,7 @@ export function CanvasStage({
           tool={tool}
           pointerMode={interactionState.pointerMode}
           selectedNode={selectedNode}
+          draftConnector={interactionState.draftConnector}
           hoveredAnchor={interactionState.hoveredAnchor}
           activeConnectorHandle={interactionState.activeConnectorHandle}
         />

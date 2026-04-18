@@ -8,9 +8,23 @@ interface SelectionToolbarProps {
   style: CSSProperties;
   onMoveBackward: () => void;
   onMoveForward: () => void;
+  onEnterContainer?: () => void;
+  onWrapInContainer?: () => void;
+  onMoveOutOfContainer?: () => void;
+  onDissolveContainer?: () => void;
 }
 
-export function SelectionToolbar({ selectedNode, board, style, onMoveBackward, onMoveForward }: SelectionToolbarProps) {
+export function SelectionToolbar({
+  selectedNode,
+  board,
+  style,
+  onMoveBackward,
+  onMoveForward,
+  onEnterContainer,
+  onWrapInContainer,
+  onMoveOutOfContainer,
+  onDissolveContainer,
+}: SelectionToolbarProps) {
   const bounds = normalizeBounds(getCanvasNodeBounds(selectedNode, board));
 
   return (
@@ -34,6 +48,26 @@ export function SelectionToolbar({ selectedNode, board, style, onMoveBackward, o
       <button className="toolbar-icon-btn" type="button" onClick={onMoveForward}>
         上移
       </button>
+      {selectedNode.type === 'container' && onEnterContainer ? (
+        <button className="toolbar-icon-btn" type="button" onClick={onEnterContainer}>
+          进入
+        </button>
+      ) : null}
+      {selectedNode.type !== 'container' && selectedNode.type !== 'connector' && onWrapInContainer ? (
+        <button className="toolbar-icon-btn" type="button" onClick={onWrapInContainer}>
+          包裹为容器
+        </button>
+      ) : null}
+      {selectedNode.type !== 'container' && selectedNode.type !== 'connector' && onMoveOutOfContainer ? (
+        <button className="toolbar-icon-btn" type="button" onClick={onMoveOutOfContainer}>
+          移出容器
+        </button>
+      ) : null}
+      {selectedNode.type === 'container' && onDissolveContainer ? (
+        <button className="toolbar-icon-btn" type="button" onClick={onDissolveContainer}>
+          拆容器
+        </button>
+      ) : null}
     </section>
   );
 }

@@ -1,11 +1,12 @@
 import { normalizeBounds, pointInBounds, type Bounds } from '../geometry';
 import { worldToScreen } from '../transform';
-import type { Point, RectNode, TextNode, ImageNode, VideoNode, Viewport } from '../model';
+import { resolveNodeToWorld } from '../hierarchy';
+import type { BoardDoc, ContainerNode, Point, RectNode, TextNode, ImageNode, VideoNode, Viewport } from '../model';
 
-type BoxNode = RectNode | TextNode | ImageNode | VideoNode;
+type BoxNode = RectNode | TextNode | ImageNode | VideoNode | ContainerNode;
 
-export function getBoxBounds(node: BoxNode): Bounds {
-  return normalizeBounds(node);
+export function getBoxBounds(node: BoxNode, board?: BoardDoc): Bounds {
+  return normalizeBounds(resolveNodeToWorld(node, board));
 }
 
 export function translateBoxNode<TNode extends BoxNode>(node: TNode, delta: Point): TNode {
