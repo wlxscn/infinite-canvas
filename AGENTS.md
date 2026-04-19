@@ -23,6 +23,7 @@ Place UI features under `apps/web/src/features`, route/controller logic under `a
 
 ## Coding Style & Naming Conventions
 Prefer TypeScript in the frontend and shared packages, and `.mjs` ESM modules in `apps/agent-api`. Follow existing file patterns: React components in `PascalCase` (`CanvasStage.tsx`), hooks as `use...`, utilities in `camelCase`, and tests as `*.test.ts` or `*.spec.ts`. Use the repo ESLint config in `eslint.config.js`; run `pnpm lint` before opening a PR.
+For React code in `apps/web`, assume development runs under `StrictMode`. Effects and cleanups must be re-entrant: if cleanup flips refs or tears down stateful resources, the effect body must restore them on the next mount. Avoid one-way flags that are only set in cleanup, because `StrictMode` will intentionally run mount -> cleanup -> mount and can leave refs such as `isMountedRef` in an invalid state during normal local development.
 
 ## Testing Guidelines
 Unit tests live in `apps/web/tests/unit` and use Vitest. End-to-end tests live in `apps/web/tests/e2e` and use Playwright with a local Chromium project. Add or update tests for behavior changes that affect canvas state, chat mapping, persistence, or API-driven flows. Keep test names descriptive, for example `history.test.ts` or `canvas.spec.ts`.

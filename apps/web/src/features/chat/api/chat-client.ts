@@ -67,12 +67,19 @@ async function getErrorMessage(response: Response): Promise<string> {
 
 export async function transcribeChatAudio(audio: Blob): Promise<AudioTranscriptionResponse> {
   const mimeType = audio.type || 'audio/webm';
+  const url = getTranscriptionApiUrl();
   const formData = new FormData();
   const file = new File([audio], getDefaultAudioFilename(mimeType), { type: mimeType });
 
   formData.append('audio', file);
+  console.log('[web/chat-client] transcribe-request', {
+    url,
+    mimeType,
+    size: audio.size,
+    filename: file.name,
+  });
 
-  const response = await fetch(getTranscriptionApiUrl(), {
+  const response = await fetch(url, {
     method: 'POST',
     body: formData,
   });

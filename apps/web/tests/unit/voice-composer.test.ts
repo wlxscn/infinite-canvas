@@ -35,6 +35,115 @@ class MockMediaRecorder extends EventTarget {
   }
 }
 
+class DelayedStopMediaRecorder extends EventTarget {
+  static isTypeSupported(mimeType: string) {
+    return mimeType === 'audio/webm;codecs=opus' || mimeType === 'audio/webm';
+  }
+
+  readonly mimeType: string;
+  state: RecordingState = 'inactive';
+
+  constructor(_stream: MediaStream, options?: MediaRecorderOptions) {
+    super();
+    this.mimeType = options?.mimeType ?? 'audio/webm';
+  }
+
+  start() {
+    this.state = 'recording';
+  }
+
+  requestData() {
+    window.setTimeout(() => {
+      const chunkEvent = new Event('dataavailable');
+      Object.defineProperty(chunkEvent, 'data', {
+        configurable: true,
+        value: new Blob(['voice-chunk'], { type: this.mimeType }),
+      });
+      this.dispatchEvent(chunkEvent);
+    }, 0);
+  }
+
+  stop() {
+    this.state = 'inactive';
+    window.setTimeout(() => {
+      this.requestData();
+      this.dispatchEvent(new Event('stop'));
+    }, 0);
+  }
+}
+
+class SlowFlushMediaRecorder extends EventTarget {
+  static isTypeSupported(mimeType: string) {
+    return mimeType === 'audio/webm;codecs=opus' || mimeType === 'audio/webm';
+  }
+
+  readonly mimeType: string;
+  state: RecordingState = 'inactive';
+
+  constructor(_stream: MediaStream, options?: MediaRecorderOptions) {
+    super();
+    this.mimeType = options?.mimeType ?? 'audio/webm';
+  }
+
+  start() {
+    this.state = 'recording';
+  }
+
+  requestData() {
+    window.setTimeout(() => {
+      const chunkEvent = new Event('dataavailable');
+      Object.defineProperty(chunkEvent, 'data', {
+        configurable: true,
+        value: new Blob(['late-voice-chunk'], { type: this.mimeType }),
+      });
+      this.dispatchEvent(chunkEvent);
+    }, 300);
+  }
+
+  stop() {
+    this.state = 'inactive';
+    window.setTimeout(() => {
+      this.dispatchEvent(new Event('stop'));
+    }, 350);
+  }
+}
+
+class StopBeforeDataMediaRecorder extends EventTarget {
+  static isTypeSupported(mimeType: string) {
+    return mimeType === 'audio/webm;codecs=opus' || mimeType === 'audio/webm';
+  }
+
+  readonly mimeType: string;
+  state: RecordingState = 'inactive';
+
+  constructor(_stream: MediaStream, options?: MediaRecorderOptions) {
+    super();
+    this.mimeType = options?.mimeType ?? 'audio/webm';
+  }
+
+  start() {
+    this.state = 'recording';
+  }
+
+  requestData() {
+    window.setTimeout(() => {
+      const chunkEvent = new Event('dataavailable');
+      Object.defineProperty(chunkEvent, 'data', {
+        configurable: true,
+        value: new Blob(['post-stop-chunk'], { type: this.mimeType }),
+      });
+      this.dispatchEvent(chunkEvent);
+    }, 250);
+  }
+
+  stop() {
+    this.state = 'inactive';
+    window.setTimeout(() => {
+      this.dispatchEvent(new Event('stop'));
+    }, 0);
+  }
+}
+
 describe('useVoiceComposer', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -121,5 +230,121 @@ describe('useVoiceComposer', () => {
 
     expect(onTranscript).not.toHaveBeenCalled();
     expect(result.current.errorMessage).toBe('服务端转写失败');
+  });
+
+  it('switches to transcribing immediately after stop is clicked', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('MediaRecorder', DelayedStopMediaRecorder);
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop: vi.fn() }],
+        } satisfies Pick<MediaStream, 'getTracks'>),
+      },
+    });
+
+    const onTranscript = vi.fn();
+    const transcribeAudio = vi.fn().mockResolvedValue({ text: '保留主视觉，收紧标题' });
+    const { result } = renderHook(() => useVoiceComposer({ onTranscript, transcribeAudio }));
+
+    await act(async () => {
+      await result.current.toggleRecording();
+    });
+
+    expect(result.current.status).toBe('recording');
+
+    await act(async () => {
+      await result.current.toggleRecording();
+    });
+
+    expect(result.current.status).toBe('transcribing');
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    expect(result.current.status).toBe('idle');
+
+    expect(onTranscript).toHaveBeenCalledWith('保留主视觉，收紧标题');
+    vi.useRealTimers();
+  });
+
+  it('waits for late audio chunks before sending transcription request', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('MediaRecorder', SlowFlushMediaRecorder);
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop: vi.fn() }],
+        } satisfies Pick<MediaStream, 'getTracks'>),
+      },
+    });
+
+    const onTranscript = vi.fn();
+    const transcribeAudio = vi.fn().mockResolvedValue({ text: '延迟音频也已送出' });
+    const { result } = renderHook(() => useVoiceComposer({ onTranscript, transcribeAudio }));
+
+    await act(async () => {
+      await result.current.toggleRecording();
+    });
+
+    await act(async () => {
+      await result.current.toggleRecording();
+    });
+
+    expect(result.current.status).toBe('transcribing');
+    expect(transcribeAudio).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+
+    expect(transcribeAudio).toHaveBeenCalledTimes(1);
+    expect(result.current.status).toBe('idle');
+
+    expect(onTranscript).toHaveBeenCalledWith('延迟音频也已送出');
+    vi.useRealTimers();
+  });
+
+  it('sends transcription even when the final chunk arrives after stop', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('MediaRecorder', StopBeforeDataMediaRecorder);
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop: vi.fn() }],
+        } satisfies Pick<MediaStream, 'getTracks'>),
+      },
+    });
+
+    const onTranscript = vi.fn();
+    const transcribeAudio = vi.fn().mockResolvedValue({ text: 'stop 之后的音频块也已转写' });
+    const { result } = renderHook(() => useVoiceComposer({ onTranscript, transcribeAudio }));
+
+    await act(async () => {
+      await result.current.toggleRecording();
+    });
+
+    await act(async () => {
+      await result.current.toggleRecording();
+    });
+
+    expect(result.current.status).toBe('transcribing');
+    expect(transcribeAudio).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    expect(transcribeAudio).toHaveBeenCalledTimes(1);
+    expect(result.current.status).toBe('idle');
+    expect(onTranscript).toHaveBeenCalledWith('stop 之后的音频块也已转写');
+    vi.useRealTimers();
   });
 });
