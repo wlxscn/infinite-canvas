@@ -53,25 +53,26 @@ function App() {
   usePreventBrowserZoom();
 
   const selectedNode = useMemo(() => getSelectedNode(state), [state]);
+  const isSelectedGroup = selectedNode?.type === 'group';
   const { selectedAsset, statsText, selectionToolbarStyle, hasCanvasContent, latestJob } = useWorkspaceViewModel(state, selectedNode);
   const {
     isSpacePressed,
     canUndo,
     canRedo,
-    activeContainerId,
-    canExitContainer,
-    selectedParentContainerId,
+    activeGroupId,
+    canExitGroup,
+    selectedParentGroupId,
     handleSelect,
-    handleEnterContainer,
-    handleExitContainer,
+    handleEnterGroup,
+    handleExitGroup,
     handleCommitProject,
     handleReplaceProject,
     handleFinalizeMutation,
     nudgeLayer,
-    createContainerAtViewportCenter,
-    wrapSelectionInContainer,
-    moveSelectionOutOfContainer,
-    dissolveSelectedContainer,
+    createGroupAtViewportCenter,
+    groupSelection,
+    moveSelectionOutOfGroup,
+    dissolveSelectedGroup,
     exportProjectJson,
   } = useCanvasWorkspaceController({
     state,
@@ -145,29 +146,29 @@ function App() {
                 style={selectionToolbarStyle}
                 onMoveBackward={() => nudgeLayer('backward')}
                 onMoveForward={() => nudgeLayer('forward')}
-                onEnterContainer={selectedNode.type === 'container' ? () => handleEnterContainer(selectedNode.id) : undefined}
-                onWrapInContainer={
-                  !activeContainerId && selectedNode.type !== 'container' && selectedNode.type !== 'connector'
-                    ? wrapSelectionInContainer
+                onEnterGroup={isSelectedGroup ? () => handleEnterGroup(selectedNode.id) : undefined}
+                onGroupSelection={
+                  !activeGroupId && !isSelectedGroup && selectedNode.type !== 'connector'
+                    ? groupSelection
                     : undefined
                 }
-                onMoveOutOfContainer={
-                  activeContainerId &&
-                  selectedParentContainerId === activeContainerId &&
+                onMoveOutOfGroup={
+                  activeGroupId &&
+                  selectedParentGroupId === activeGroupId &&
                   selectedNode.type !== 'connector' &&
-                  selectedNode.type !== 'container'
-                    ? moveSelectionOutOfContainer
+                  !isSelectedGroup
+                    ? moveSelectionOutOfGroup
                     : undefined
                 }
-                onDissolveContainer={selectedNode.type === 'container' ? dissolveSelectedContainer : undefined}
+                onDissolveGroup={isSelectedGroup ? dissolveSelectedGroup : undefined}
               />
             ) : null}
 
-            {activeContainerId && canExitContainer ? (
-              <div className="container-context-bar">
-                <span>正在编辑容器</span>
-                <button type="button" className="toolbar-icon-btn" onClick={handleExitContainer}>
-                  退出容器
+            {activeGroupId && canExitGroup ? (
+              <div className="group-context-bar">
+                <span>正在编辑成组</span>
+                <button type="button" className="toolbar-icon-btn" onClick={handleExitGroup}>
+                  退出成组
                 </button>
               </div>
             ) : null}
@@ -178,7 +179,7 @@ function App() {
                 tool={state.tool}
                 connectorPathMode={connectorPathMode}
                 selectedId={state.selectedId}
-                activeContainerId={activeContainerId}
+                activeGroupId={activeGroupId}
                 isSpacePressed={isSpacePressed}
                 onInteractionActiveChange={setIsCanvasInteractionActive}
                 onSelect={handleSelect}
@@ -193,7 +194,7 @@ function App() {
               tools={TOOLS}
               activeTool={state.tool}
               connectorPathMode={connectorPathMode}
-              onCreateContainer={createContainerAtViewportCenter}
+              onCreateGroup={createGroupAtViewportCenter}
               onSelectTool={(tool) => setState((prev) => setTool(prev, tool))}
               onSelectConnectorPathMode={setConnectorPathMode}
             />

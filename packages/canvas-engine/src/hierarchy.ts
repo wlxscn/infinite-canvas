@@ -1,14 +1,14 @@
 import { normalizeBounds, type Bounds } from './geometry';
-import type { BoardDoc, CanvasNode, ContainerChildNode, ContainerNode, Point } from './model';
+import type { BoardDoc, CanvasNode, GroupChildNode, GroupNode, Point } from './model';
 
 export interface NodeLocation<TNode extends CanvasNode = CanvasNode> {
   node: TNode;
-  parentContainerId: string | null;
+  parentGroupId: string | null;
   offset: Point;
 }
 
-export function isContainerNode(node: CanvasNode): node is ContainerNode {
-  return node.type === 'container';
+export function isGroupNode(node: CanvasNode): node is GroupNode {
+  return node.type === 'group';
 }
 
 export function getNodeWorldOffset(board: BoardDoc, nodeId: string): Point {
@@ -17,7 +17,7 @@ export function getNodeWorldOffset(board: BoardDoc, nodeId: string): Point {
       return { x: 0, y: 0 };
     }
 
-    if (!isContainerNode(node)) {
+    if (!isGroupNode(node)) {
       continue;
     }
 
@@ -30,9 +30,9 @@ export function getNodeWorldOffset(board: BoardDoc, nodeId: string): Point {
   return { x: 0, y: 0 };
 }
 
-export function getNodeParentContainerId(nodes: CanvasNode[], nodeId: string): string | null {
+export function getNodeParentGroupId(nodes: CanvasNode[], nodeId: string): string | null {
   for (const node of nodes) {
-    if (!isContainerNode(node)) {
+    if (!isGroupNode(node)) {
       continue;
     }
 
@@ -54,7 +54,7 @@ export function getNodeById(nodes: CanvasNode[], id: string | null): CanvasNode 
       return node;
     }
 
-    if (!isContainerNode(node)) {
+    if (!isGroupNode(node)) {
       continue;
     }
 
@@ -67,18 +67,18 @@ export function getNodeById(nodes: CanvasNode[], id: string | null): CanvasNode 
   return null;
 }
 
-export function getContainerById(nodes: CanvasNode[], id: string | null): ContainerNode | null {
+export function getGroupById(nodes: CanvasNode[], id: string | null): GroupNode | null {
   const node = getNodeById(nodes, id);
-  return node && isContainerNode(node) ? node : null;
+  return node && isGroupNode(node) ? node : null;
 }
 
-export function getNodesInContext(board: BoardDoc, activeContainerId: string | null): CanvasNode[] {
-  if (!activeContainerId) {
+export function getNodesInContext(board: BoardDoc, activeGroupId: string | null): CanvasNode[] {
+  if (!activeGroupId) {
     return board.nodes;
   }
 
-  const container = getContainerById(board.nodes, activeContainerId);
-  return container ? container.children : board.nodes;
+  const group = getGroupById(board.nodes, activeGroupId);
+  return group ? group.children : board.nodes;
 }
 
 export function getAllDescendantNodes(nodes: CanvasNode[]): CanvasNode[] {
@@ -86,7 +86,7 @@ export function getAllDescendantNodes(nodes: CanvasNode[]): CanvasNode[] {
 
   for (const node of nodes) {
     result.push(node);
-    if (isContainerNode(node)) {
+    if (isGroupNode(node)) {
       result.push(...node.children);
     }
   }
@@ -94,7 +94,7 @@ export function getAllDescendantNodes(nodes: CanvasNode[]): CanvasNode[] {
   return result;
 }
 
-function translateChildNodeToWorld(node: ContainerChildNode, offset: Point): ContainerChildNode {
+function translateChildNodeToWorld(node: GroupChildNode, offset: Point): GroupChildNode {
   if (node.type === 'freehand') {
     return {
       ...node,
@@ -113,7 +113,7 @@ function translateChildNodeToWorld(node: ContainerChildNode, offset: Point): Con
 }
 
 export function resolveNodeToWorld<TNode extends CanvasNode>(node: TNode, board?: BoardDoc): TNode {
-  if (!board || isContainerNode(node)) {
+  if (!board || isGroupNode(node)) {
     return node;
   }
 
@@ -122,7 +122,7 @@ export function resolveNodeToWorld<TNode extends CanvasNode>(node: TNode, board?
     return node;
   }
 
-  return translateChildNodeToWorld(node as ContainerChildNode, offset) as TNode;
+  return translateChildNodeToWorld(node as GroupChildNode, offset) as TNode;
 }
 
 export function getNodeWorldBounds(node: CanvasNode, board: BoardDoc): Bounds {
@@ -140,32 +140,32 @@ export function getNodeWorldBounds(node: CanvasNode, board: BoardDoc): Bounds {
     });
   }
 
-  if (isContainerNode(worldNode) || worldNode.type === 'connector') {
+  if (isGroupNode(worldNode) || worldNode.type === 'connector') {
     return normalizeBounds(worldNode as Bounds);
   }
 
   return normalizeBounds(worldNode);
 }
 
-export function worldPointToContainerLocal(board: BoardDoc, containerId: string | null, point: Point): Point {
-  if (!containerId) {
+export function worldPointToGroupLocal(board: BoardDoc, groupId: string | null, point: Point): Point {
+  if (!groupId) {
     return point;
   }
 
-  const container = getContainerById(board.nodes, containerId);
-  if (!container) {
+  const group = getGroupById(board.nodes, groupId);
+  if (!group) {
     return point;
   }
 
   return {
-    x: point.x - container.x,
-    y: point.y - container.y,
+    x: point.x - group.x,
+    y: point.y - group.y,
   };
 }
 
 export function worldPointToNodeLocal(board: BoardDoc, nodeId: string, point: Point): Point {
-  const parentContainerId = getNodeParentContainerId(board.nodes, nodeId);
-  return worldPointToContainerLocal(board, parentContainerId, point);
+  const parentGroupId = getNodeParentGroupId(board.nodes, nodeId);
+  return worldPointToGroupLocal(board, parentGroupId, point);
 }
 
 export function upsertNode(nodes: CanvasNode[], node: CanvasNode): CanvasNode[] {
@@ -177,7 +177,7 @@ export function upsertNode(nodes: CanvasNode[], node: CanvasNode): CanvasNode[] 
   }
 
   return nodes.map((current) => {
-    if (!isContainerNode(current)) {
+    if (!isGroupNode(current)) {
       return current;
     }
 
@@ -187,7 +187,7 @@ export function upsertNode(nodes: CanvasNode[], node: CanvasNode): CanvasNode[] 
     }
 
     const nextChildren = current.children.slice();
-    nextChildren[childIndex] = node as ContainerChildNode;
+    nextChildren[childIndex] = node as GroupChildNode;
     return {
       ...current,
       children: nextChildren,
@@ -199,7 +199,7 @@ export function removeNodeById(nodes: CanvasNode[], id: string): CanvasNode[] {
   return nodes
     .filter((node) => node.id !== id)
     .map((node) => {
-      if (!isContainerNode(node)) {
+      if (!isGroupNode(node)) {
         return node;
       }
 
@@ -222,7 +222,7 @@ export function bringNodeForward(nodes: CanvasNode[], id: string): CanvasNode[] 
   }
 
   return nodes.map((node) => {
-    if (!isContainerNode(node)) {
+      if (!isGroupNode(node)) {
       return node;
     }
 
@@ -252,7 +252,7 @@ export function sendNodeBackward(nodes: CanvasNode[], id: string): CanvasNode[] 
   }
 
   return nodes.map((node) => {
-    if (!isContainerNode(node)) {
+      if (!isGroupNode(node)) {
       return node;
     }
 
@@ -270,16 +270,16 @@ export function sendNodeBackward(nodes: CanvasNode[], id: string): CanvasNode[] 
   });
 }
 
-export function moveNodeToContainer(nodes: CanvasNode[], nodeId: string, containerId: string): CanvasNode[] {
+export function moveNodeToGroup(nodes: CanvasNode[], nodeId: string, groupId: string): CanvasNode[] {
   const targetNode = getNodeById(nodes, nodeId);
-  const targetContainer = getContainerById(nodes, containerId);
+  const targetGroup = getGroupById(nodes, groupId);
 
-  if (!targetNode || !targetContainer || isContainerNode(targetNode) || targetNode.type === 'connector') {
+  if (!targetNode || !targetGroup || isGroupNode(targetNode) || targetNode.type === 'connector') {
     return nodes;
   }
 
-  const targetParent = getNodeParentContainerId(nodes, nodeId);
-  if (targetParent === containerId) {
+  const targetParent = getNodeParentGroupId(nodes, nodeId);
+  if (targetParent === groupId) {
     return nodes;
   }
 
@@ -288,14 +288,14 @@ export function moveNodeToContainer(nodes: CanvasNode[], nodeId: string, contain
     viewport: { tx: 0, ty: 0, scale: 1 },
     nodes,
   });
-  const localNode = translateChildNodeToWorld(worldNode as ContainerChildNode, {
-    x: -targetContainer.x,
-    y: -targetContainer.y,
+  const localNode = translateChildNodeToWorld(worldNode as GroupChildNode, {
+    x: -targetGroup.x,
+    y: -targetGroup.y,
   });
 
   const removedNodes = removeNodeById(nodes, nodeId);
   return removedNodes.map((node) =>
-    node.id === containerId && isContainerNode(node)
+    node.id === groupId && isGroupNode(node)
       ? {
           ...node,
           children: [...node.children, localNode],
@@ -304,9 +304,9 @@ export function moveNodeToContainer(nodes: CanvasNode[], nodeId: string, contain
   );
 }
 
-export function appendNodeToContainer(nodes: CanvasNode[], containerId: string, node: ContainerChildNode): CanvasNode[] {
+export function appendNodeToGroup(nodes: CanvasNode[], groupId: string, node: GroupChildNode): CanvasNode[] {
   return nodes.map((current) =>
-    current.id === containerId && isContainerNode(current)
+    current.id === groupId && isGroupNode(current)
       ? {
           ...current,
           children: [...current.children, node],
@@ -315,34 +315,34 @@ export function appendNodeToContainer(nodes: CanvasNode[], containerId: string, 
   );
 }
 
-export function moveNodeOutOfContainer(nodes: CanvasNode[], nodeId: string): CanvasNode[] {
+export function moveNodeOutOfGroup(nodes: CanvasNode[], nodeId: string): CanvasNode[] {
   const node = getNodeById(nodes, nodeId);
-  const parentContainerId = getNodeParentContainerId(nodes, nodeId);
-  const parentContainer = getContainerById(nodes, parentContainerId);
+  const parentGroupId = getNodeParentGroupId(nodes, nodeId);
+  const parentGroup = getGroupById(nodes, parentGroupId);
 
-  if (!node || !parentContainer || isContainerNode(node) || node.type === 'connector') {
+  if (!node || !parentGroup || isGroupNode(node) || node.type === 'connector') {
     return nodes;
   }
 
-  const worldNode = translateChildNodeToWorld(node, { x: parentContainer.x, y: parentContainer.y });
+  const worldNode = translateChildNodeToWorld(node, { x: parentGroup.x, y: parentGroup.y });
   const removedNodes = removeNodeById(nodes, nodeId);
-  const parentIndex = removedNodes.findIndex((candidate) => candidate.id === parentContainerId);
+  const parentIndex = removedNodes.findIndex((candidate) => candidate.id === parentGroupId);
   const next = removedNodes.slice();
   next.splice(parentIndex + 1, 0, worldNode);
   return next;
 }
 
-export function dissolveContainer(nodes: CanvasNode[], containerId: string): CanvasNode[] {
-  const containerIndex = nodes.findIndex((node) => node.id === containerId && isContainerNode(node));
-  if (containerIndex === -1) {
+export function dissolveGroup(nodes: CanvasNode[], groupId: string): CanvasNode[] {
+  const groupIndex = nodes.findIndex((node) => node.id === groupId && isGroupNode(node));
+  if (groupIndex === -1) {
     return nodes;
   }
 
-  const container = nodes[containerIndex] as ContainerNode;
-  const worldChildren = container.children.map((child) =>
-    translateChildNodeToWorld(child, { x: container.x, y: container.y }),
+  const group = nodes[groupIndex] as GroupNode;
+  const worldChildren = group.children.map((child) =>
+    translateChildNodeToWorld(child, { x: group.x, y: group.y }),
   );
   const next = nodes.slice();
-  next.splice(containerIndex, 1, ...worldChildren);
+  next.splice(groupIndex, 1, ...worldChildren);
   return next;
 }

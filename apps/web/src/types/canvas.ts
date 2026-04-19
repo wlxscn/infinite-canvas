@@ -7,8 +7,8 @@ export type {
   BoardDoc,
   BoxNode,
   CanvasNode,
-  ContainerChildNode,
-  ContainerNode,
+  GroupChildNode,
+  GroupNode,
   ConnectorEndpoint,
   ConnectorNode,
   ConnectorPathMode,
@@ -80,7 +80,7 @@ export interface CanvasStoreState {
   project: CanvasProject;
   tool: Tool;
   selectedId: string | null;
-  activeContainerId: string | null;
+  activeGroupId: string | null;
   past: CanvasProject[];
   future: CanvasProject[];
 }

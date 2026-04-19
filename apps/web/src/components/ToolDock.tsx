@@ -4,7 +4,7 @@ interface ToolDockProps {
   tools: Array<{ id: Tool; label: string; icon: string }>;
   activeTool: Tool;
   connectorPathMode: ConnectorPathMode;
-  onCreateContainer: () => void;
+  onCreateGroup: () => void;
   onSelectTool: (tool: Tool) => void;
   onSelectConnectorPathMode: (mode: ConnectorPathMode) => void;
 }
@@ -13,7 +13,7 @@ export function ToolDock({
   tools,
   activeTool,
   connectorPathMode,
-  onCreateContainer,
+  onCreateGroup,
   onSelectTool,
   onSelectConnectorPathMode,
 }: ToolDockProps) {
@@ -39,9 +39,9 @@ export function ToolDock({
       ) : null}
 
       <nav className="tool-dock" aria-label="Primary tools">
-        <button className="dock-btn" onClick={onCreateContainer} type="button" aria-label="新建容器" title="新建容器">
+        <button className="dock-btn" onClick={onCreateGroup} type="button" aria-label="新建成组" title="新建成组">
           <span className="dock-icon">▣</span>
-          <span className="dock-label">容器</span>
+          <span className="dock-label">成组</span>
         </button>
         {tools.map((item) => (
           <button

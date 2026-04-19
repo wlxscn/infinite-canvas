@@ -8,10 +8,10 @@ interface SelectionToolbarProps {
   style: CSSProperties;
   onMoveBackward: () => void;
   onMoveForward: () => void;
-  onEnterContainer?: () => void;
-  onWrapInContainer?: () => void;
-  onMoveOutOfContainer?: () => void;
-  onDissolveContainer?: () => void;
+  onEnterGroup?: () => void;
+  onGroupSelection?: () => void;
+  onMoveOutOfGroup?: () => void;
+  onDissolveGroup?: () => void;
 }
 
 export function SelectionToolbar({
@@ -20,12 +20,13 @@ export function SelectionToolbar({
   style,
   onMoveBackward,
   onMoveForward,
-  onEnterContainer,
-  onWrapInContainer,
-  onMoveOutOfContainer,
-  onDissolveContainer,
+  onEnterGroup,
+  onGroupSelection,
+  onMoveOutOfGroup,
+  onDissolveGroup,
 }: SelectionToolbarProps) {
   const bounds = normalizeBounds(getCanvasNodeBounds(selectedNode, board));
+  const isGroupNode = selectedNode.type === 'group';
 
   return (
     <section
@@ -48,24 +49,24 @@ export function SelectionToolbar({
       <button className="toolbar-icon-btn" type="button" onClick={onMoveForward}>
         上移
       </button>
-      {selectedNode.type === 'container' && onEnterContainer ? (
-        <button className="toolbar-icon-btn" type="button" onClick={onEnterContainer}>
+      {isGroupNode && onEnterGroup ? (
+        <button className="toolbar-icon-btn" type="button" onClick={onEnterGroup}>
           进入
         </button>
       ) : null}
-      {selectedNode.type !== 'container' && selectedNode.type !== 'connector' && onWrapInContainer ? (
-        <button className="toolbar-icon-btn" type="button" onClick={onWrapInContainer}>
-          包裹为容器
+      {!isGroupNode && selectedNode.type !== 'connector' && onGroupSelection ? (
+        <button className="toolbar-icon-btn" type="button" onClick={onGroupSelection}>
+          成组
         </button>
       ) : null}
-      {selectedNode.type !== 'container' && selectedNode.type !== 'connector' && onMoveOutOfContainer ? (
-        <button className="toolbar-icon-btn" type="button" onClick={onMoveOutOfContainer}>
-          移出容器
+      {!isGroupNode && selectedNode.type !== 'connector' && onMoveOutOfGroup ? (
+        <button className="toolbar-icon-btn" type="button" onClick={onMoveOutOfGroup}>
+          移出成组
         </button>
       ) : null}
-      {selectedNode.type === 'container' && onDissolveContainer ? (
-        <button className="toolbar-icon-btn" type="button" onClick={onDissolveContainer}>
-          拆容器
+      {isGroupNode && onDissolveGroup ? (
+        <button className="toolbar-icon-btn" type="button" onClick={onDissolveGroup}>
+          拆分组
         </button>
       ) : null}
     </section>

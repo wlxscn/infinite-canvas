@@ -2,23 +2,23 @@ import type {
   AssetRecord,
   BoardDoc,
   CanvasNode,
-  ContainerNode,
+  GroupNode,
   CanvasProject,
   CanvasStoreState,
   GenerationJob,
   Tool,
 } from '../types/canvas';
 import {
-  appendNodeToContainer,
+  appendNodeToGroup,
   bringHierarchicalNodeForward,
-  dissolveContainer,
-  getContainerById,
+  dissolveGroup,
+  getGroupById,
   getHierarchicalNodeById,
-  getNodeParentContainerId,
+  getNodeParentGroupId,
   isConnectorAttachedToNode,
   isConnectorNode,
-  moveNodeOutOfContainer as moveNodeOutOfContainerInTree,
-  moveNodeToContainer,
+  moveNodeOutOfGroup as moveNodeOutOfGroupInTree,
+  moveNodeToGroup,
   removeHierarchicalNodeById,
   sendHierarchicalNodeBackward,
   upsertHierarchicalNode,
@@ -56,7 +56,7 @@ export function createInitialStore(project: CanvasProject): CanvasStoreState {
     project,
     tool: 'select',
     selectedId: null,
-    activeContainerId: null,
+    activeGroupId: null,
     past: [],
     future: [],
   };
@@ -81,8 +81,8 @@ export function setSelectedId(state: CanvasStoreState, selectedId: string | null
   return { ...state, selectedId };
 }
 
-export function setActiveContainerId(state: CanvasStoreState, activeContainerId: string | null): CanvasStoreState {
-  return { ...state, activeContainerId };
+export function setActiveGroupId(state: CanvasStoreState, activeGroupId: string | null): CanvasStoreState {
+  return { ...state, activeGroupId };
 }
 
 export function replaceProjectNoHistory(state: CanvasStoreState, project: CanvasProject): CanvasStoreState {
@@ -135,7 +135,7 @@ export function undo(state: CanvasStoreState): CanvasStoreState {
     ...state,
     project: previous,
     selectedId: null,
-    activeContainerId: null,
+    activeGroupId: null,
     past: state.past.slice(0, -1),
     future: [state.project, ...state.future],
   };
@@ -151,7 +151,7 @@ export function redo(state: CanvasStoreState): CanvasStoreState {
     ...state,
     project: next,
     selectedId: null,
-    activeContainerId: null,
+    activeGroupId: null,
     past: limitHistory([...state.past, state.project]),
     future: state.future.slice(1),
   };
@@ -213,77 +213,77 @@ export function sendNodeBackward(nodes: CanvasNode[], id: string): CanvasNode[] 
   return sendHierarchicalNodeBackward(nodes, id);
 }
 
-export function createContainerNode(x: number, y: number, w = 280, h = 180): ContainerNode {
+export function createGroupNode(x: number, y: number, w = 280, h = 180): GroupNode {
   return {
     id: crypto.randomUUID ? `node_${crypto.randomUUID()}` : `node_${Date.now()}`,
-    type: 'container',
+    type: 'group',
     x,
     y,
     w,
     h,
     children: [],
-    name: '容器',
+    name: '成组',
   };
 }
 
-export function wrapNodeInNewContainer(nodes: CanvasNode[], nodeId: string): CanvasNode[] {
+export function wrapNodeInNewGroup(nodes: CanvasNode[], nodeId: string): CanvasNode[] {
   const node = getHierarchicalNodeById(nodes, nodeId);
-  const parentContainerId = getNodeParentContainerId(nodes, nodeId);
-  if (!node || isConnectorNode(node) || node.type === 'container' || parentContainerId) {
+  const parentGroupId = getNodeParentGroupId(nodes, nodeId);
+  if (!node || isConnectorNode(node) || node.type === 'group' || parentGroupId) {
     return nodes;
   }
 
   const padding = 24;
   const worldNode = node;
-  let container: ContainerNode;
+  let group: GroupNode;
   if (worldNode.type === 'freehand') {
     const minX = Math.min(...worldNode.points.map((point) => point.x));
     const minY = Math.min(...worldNode.points.map((point) => point.y));
     const maxX = Math.max(...worldNode.points.map((point) => point.x));
     const maxY = Math.max(...worldNode.points.map((point) => point.y));
-    container = createContainerNode(minX - padding, minY - padding, maxX - minX + padding * 2, maxY - minY + padding * 2);
-    container.children = [
+    group = createGroupNode(minX - padding, minY - padding, maxX - minX + padding * 2, maxY - minY + padding * 2);
+    group.children = [
       {
         ...worldNode,
         points: worldNode.points.map((point) => ({
-          x: point.x - container.x,
-          y: point.y - container.y,
+          x: point.x - group.x,
+          y: point.y - group.y,
         })),
       },
     ];
   } else {
-    container = createContainerNode(worldNode.x - padding, worldNode.y - padding, worldNode.w + padding * 2, worldNode.h + padding * 2);
-    container.children = [
+    group = createGroupNode(worldNode.x - padding, worldNode.y - padding, worldNode.w + padding * 2, worldNode.h + padding * 2);
+    group.children = [
       {
         ...worldNode,
-        x: worldNode.x - container.x,
-        y: worldNode.y - container.y,
+        x: worldNode.x - group.x,
+        y: worldNode.y - group.y,
       },
     ];
   }
 
   const withoutNode = removeNodeById(nodes, nodeId);
-  return [...withoutNode, container];
+  return [...withoutNode, group];
 }
 
-export function moveNodeOutOfContainer(nodes: CanvasNode[], nodeId: string): CanvasNode[] {
-  return moveNodeOutOfContainerInTree(nodes, nodeId);
+export function moveNodeOutOfGroup(nodes: CanvasNode[], nodeId: string): CanvasNode[] {
+  return moveNodeOutOfGroupInTree(nodes, nodeId);
 }
 
-export function insertNodeIntoContainer(nodes: CanvasNode[], containerId: string, node: CanvasNode): CanvasNode[] {
-  if (node.type === 'connector' || node.type === 'container') {
+export function insertNodeIntoGroup(nodes: CanvasNode[], groupId: string, node: CanvasNode): CanvasNode[] {
+  if (node.type === 'connector' || node.type === 'group') {
     return nodes;
   }
-  return appendNodeToContainer(nodes, containerId, node);
+  return appendNodeToGroup(nodes, groupId, node);
 }
 
-export function dissolveContainerNode(nodes: CanvasNode[], containerId: string): CanvasNode[] {
-  return dissolveContainer(nodes, containerId);
+export function dissolveGroupNode(nodes: CanvasNode[], groupId: string): CanvasNode[] {
+  return dissolveGroup(nodes, groupId);
 }
 
-export function canExitActiveContainer(nodes: CanvasNode[], activeContainerId: string | null): boolean {
-  return !!getContainerById(nodes, activeContainerId);
+export function canExitActiveGroup(nodes: CanvasNode[], activeGroupId: string | null): boolean {
+  return !!getGroupById(nodes, activeGroupId);
 }
 
-export { moveNodeToContainer };
-export { getNodeParentContainerId };
+export { moveNodeToGroup };
+export { getNodeParentGroupId };

@@ -8,17 +8,17 @@ import {
   getCanvasNodeBounds,
   getNodeAdapter,
   getNodeAdapterRegistry,
-  getNodeParentContainerId,
+  getNodeParentGroupId,
   hitCanvasNodeResizeHandle,
   hitTestCanvasNode,
-  moveNodeOutOfContainer,
+  moveNodeOutOfGroup,
   resizeCanvasNode,
   resolveConnectorPathPoints,
   resolveConnectorPoints,
   translateCanvasNode,
 } from '@infinite-canvas/canvas-engine';
 import { createEmptyProject, getNodeById, removeNodeById, upsertNode } from '../../src/state/store';
-import { dissolveContainerNode, wrapNodeInNewContainer } from '../../src/state/store';
+import { dissolveGroupNode, wrapNodeInNewGroup } from '../../src/state/store';
 import type { CanvasNode } from '../../src/types/canvas';
 
 function createDraftConnector(
@@ -115,8 +115,8 @@ describe('canvas engine', () => {
         width: 2,
       },
       {
-        id: 'container_1',
-        type: 'container',
+        id: 'group_1',
+        type: 'group',
         x: 10,
         y: 10,
         w: 220,
@@ -154,7 +154,7 @@ describe('canvas engine', () => {
     expect(hitTestCanvasNode(freehand, { x: 80, y: 80 }, 2)).toBe(false);
   });
 
-  it('stores container children in local coordinates and restores them to root world space when dissolved', () => {
+  it('stores group children in local coordinates and restores them to root world space when dissolved', () => {
     const base = createEmptyProject();
     const rootNode: CanvasNode = {
       id: 'node_rect_1',
@@ -166,23 +166,23 @@ describe('canvas engine', () => {
       stroke: '#000',
     };
 
-    const wrappedNodes = wrapNodeInNewContainer([rootNode], rootNode.id);
+    const wrappedNodes = wrapNodeInNewGroup([rootNode], rootNode.id);
     expect(wrappedNodes).toHaveLength(1);
-    const container = wrappedNodes[0];
-    expect(container.type).toBe('container');
-    if (container.type !== 'container') {
+    const group = wrappedNodes[0];
+    expect(group.type).toBe('group');
+    if (group.type !== 'group') {
       return;
     }
 
-    expect(container.children[0]).toMatchObject({
+    expect(group.children[0]).toMatchObject({
       id: 'node_rect_1',
       x: 24,
       y: 24,
     });
-    expect(getNodeParentContainerId(wrappedNodes, 'node_rect_1')).toBe(container.id);
+    expect(getNodeParentGroupId(wrappedNodes, 'node_rect_1')).toBe(group.id);
     expect(getAllDescendantNodes(wrappedNodes)).toHaveLength(2);
     expect(
-      getCanvasNodeBounds(container.children[0], {
+      getCanvasNodeBounds(group.children[0], {
         ...base.board,
         nodes: wrappedNodes,
       }),
@@ -193,13 +193,13 @@ describe('canvas engine', () => {
       h: 100,
     });
 
-    const movedOutNodes = moveNodeOutOfContainer(wrappedNodes, 'node_rect_1');
+    const movedOutNodes = moveNodeOutOfGroup(wrappedNodes, 'node_rect_1');
     expect(getNodeById(movedOutNodes, 'node_rect_1')).toMatchObject({
       x: 120,
       y: 80,
     });
 
-    const dissolvedNodes = dissolveContainerNode(wrappedNodes, container.id);
+    const dissolvedNodes = dissolveGroupNode(wrappedNodes, group.id);
     expect(dissolvedNodes).toHaveLength(1);
     expect(dissolvedNodes[0]).toMatchObject({
       id: 'node_rect_1',
@@ -422,7 +422,7 @@ describe('canvas engine', () => {
     const controller = createCanvasInteractionController({
       project,
       selectedId: 'node_rect_1',
-      getActiveContainerId: () => null,
+      getActiveGroupId: () => null,
       getTool: () => 'select',
       isSpacePressed: () => false,
       getConnectorPathMode: () => 'straight',
@@ -457,7 +457,7 @@ describe('canvas engine', () => {
       createConnectorNode: createDraftConnector,
       getNodeById,
       upsertNode,
-      insertNodeIntoContainer: (nodes, _containerId, node) => [...nodes, node],
+      insertNodeIntoGroup: (nodes, _groupId, node) => [...nodes, node],
       onSelect,
       onReplaceProject,
       onCommitProject,
@@ -599,7 +599,7 @@ describe('canvas engine', () => {
     const controller = createCanvasInteractionController({
       project,
       selectedId: 'node_rect_1',
-      getActiveContainerId: () => null,
+      getActiveGroupId: () => null,
       getTool: () => 'select',
       isSpacePressed: () => false,
       getConnectorPathMode: () => 'straight',
@@ -634,7 +634,7 @@ describe('canvas engine', () => {
       createConnectorNode: createDraftConnector,
       getNodeById,
       upsertNode,
-      insertNodeIntoContainer: (nodes, _containerId, node) => [...nodes, node],
+      insertNodeIntoGroup: (nodes, _groupId, node) => [...nodes, node],
       onSelect,
       onReplaceProject,
       onCommitProject,
@@ -710,7 +710,7 @@ describe('canvas engine', () => {
     const controller = createCanvasInteractionController({
       project,
       selectedId: null,
-      getActiveContainerId: () => null,
+      getActiveGroupId: () => null,
       getTool: () => 'select',
       isSpacePressed: () => false,
       getConnectorPathMode: () => 'straight',
@@ -745,7 +745,7 @@ describe('canvas engine', () => {
       createConnectorNode: createDraftConnector,
       getNodeById,
       upsertNode,
-      insertNodeIntoContainer: (nodes, _containerId, node) => [...nodes, node],
+      insertNodeIntoGroup: (nodes, _groupId, node) => [...nodes, node],
       onSelect: vi.fn(),
       onReplaceProject: vi.fn(),
       onCommitProject: vi.fn(),
@@ -794,7 +794,7 @@ describe('canvas engine', () => {
     controller.dispose();
   });
 
-  it('scopes selection to the active container context', () => {
+  it('scopes selection to the active group context', () => {
     const base = createEmptyProject();
     const project = {
       ...base,
@@ -802,8 +802,8 @@ describe('canvas engine', () => {
         ...base.board,
         nodes: [
           {
-            id: 'container_1',
-            type: 'container' as const,
+            id: 'group_1',
+            type: 'group' as const,
             x: 80,
             y: 60,
             w: 240,
@@ -828,7 +828,7 @@ describe('canvas engine', () => {
     const rootController = createCanvasInteractionController({
       project,
       selectedId: null,
-      getActiveContainerId: () => null,
+      getActiveGroupId: () => null,
       getTool: () => 'select',
       isSpacePressed: () => false,
       getConnectorPathMode: () => 'straight',
@@ -849,7 +849,7 @@ describe('canvas engine', () => {
       createConnectorNode: createDraftConnector,
       getNodeById,
       upsertNode,
-      insertNodeIntoContainer: (nodes, _containerId, node) => [...nodes, node],
+      insertNodeIntoGroup: (nodes, _groupId, node) => [...nodes, node],
       onSelect,
       onReplaceProject: vi.fn(),
       onCommitProject: vi.fn(),
@@ -865,13 +865,13 @@ describe('canvas engine', () => {
       pointerType: 'mouse',
       button: 0,
     });
-    expect(onSelect).toHaveBeenCalledWith('container_1');
+    expect(onSelect).toHaveBeenCalledWith('group_1');
     rootController.dispose();
 
     const insideController = createCanvasInteractionController({
       project,
       selectedId: null,
-      getActiveContainerId: () => 'container_1',
+      getActiveGroupId: () => 'group_1',
       getTool: () => 'select',
       isSpacePressed: () => false,
       getConnectorPathMode: () => 'straight',
@@ -892,7 +892,7 @@ describe('canvas engine', () => {
       createConnectorNode: createDraftConnector,
       getNodeById,
       upsertNode,
-      insertNodeIntoContainer: (nodes, _containerId, node) => [...nodes, node],
+      insertNodeIntoGroup: (nodes, _groupId, node) => [...nodes, node],
       onSelect,
       onReplaceProject: vi.fn(),
       onCommitProject: vi.fn(),
@@ -958,7 +958,7 @@ describe('canvas engine', () => {
     const controller = createCanvasInteractionController({
       project,
       selectedId: null,
-      getActiveContainerId: () => null,
+      getActiveGroupId: () => null,
       getTool: () => 'connector',
       isSpacePressed: () => false,
       getConnectorPathMode: () => 'straight',
@@ -993,7 +993,7 @@ describe('canvas engine', () => {
       createConnectorNode: createDraftConnector,
       getNodeById,
       upsertNode,
-      insertNodeIntoContainer: (nodes, _containerId, node) => [...nodes, node],
+      insertNodeIntoGroup: (nodes, _groupId, node) => [...nodes, node],
       onSelect,
       onReplaceProject,
       onCommitProject,
@@ -1034,7 +1034,7 @@ describe('canvas engine', () => {
     const reattachController = createCanvasInteractionController({
       project: createdProject,
       selectedId: 'draft_connector',
-      getActiveContainerId: () => null,
+      getActiveGroupId: () => null,
       getTool: () => 'select',
       isSpacePressed: () => false,
       getConnectorPathMode: () => 'straight',
@@ -1069,7 +1069,7 @@ describe('canvas engine', () => {
       createConnectorNode: createDraftConnector,
       getNodeById,
       upsertNode,
-      insertNodeIntoContainer: (nodes, _containerId, node) => [...nodes, node],
+      insertNodeIntoGroup: (nodes, _groupId, node) => [...nodes, node],
       onSelect,
       onReplaceProject,
       onCommitProject,
@@ -1156,7 +1156,7 @@ describe('canvas engine', () => {
       createCanvasInteractionController({
         project: nextProject,
         selectedId,
-        getActiveContainerId: () => null,
+        getActiveGroupId: () => null,
         getTool: () => tool,
         isSpacePressed: () => false,
         getConnectorPathMode: () => 'polyline',
@@ -1191,7 +1191,7 @@ describe('canvas engine', () => {
         createConnectorNode: createDraftConnector,
         getNodeById,
         upsertNode,
-        insertNodeIntoContainer: (nodes, _containerId, node) => [...nodes, node],
+        insertNodeIntoGroup: (nodes, _groupId, node) => [...nodes, node],
         onSelect,
         onReplaceProject,
         onCommitProject,

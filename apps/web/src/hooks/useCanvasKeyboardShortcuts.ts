@@ -7,7 +7,7 @@ interface UseCanvasKeyboardShortcutsOptions {
   onUndo: () => void;
   onRedo: () => void;
   onDeleteSelection: () => void;
-  onExitContainer: () => void;
+  onExitGroup: () => void;
 }
 
 export function useCanvasKeyboardShortcuts({
@@ -17,7 +17,7 @@ export function useCanvasKeyboardShortcuts({
   onUndo,
   onRedo,
   onDeleteSelection,
-  onExitContainer,
+  onExitGroup,
 }: UseCanvasKeyboardShortcutsOptions) {
   const handlersRef = useRef({
     onSpacePressedChange,
@@ -26,7 +26,7 @@ export function useCanvasKeyboardShortcuts({
     onUndo,
     onRedo,
     onDeleteSelection,
-    onExitContainer,
+    onExitGroup,
   });
 
   useEffect(() => {
@@ -37,9 +37,9 @@ export function useCanvasKeyboardShortcuts({
       onUndo,
       onRedo,
       onDeleteSelection,
-      onExitContainer,
+      onExitGroup,
     };
-  }, [onDeleteSelection, onExitContainer, onRedo, onResetZoom, onSave, onSpacePressedChange, onUndo]);
+  }, [onDeleteSelection, onExitGroup, onRedo, onResetZoom, onSave, onSpacePressedChange, onUndo]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -85,7 +85,7 @@ export function useCanvasKeyboardShortcuts({
       }
 
       if (event.key === 'Escape') {
-        handlersRef.current.onExitContainer();
+        handlersRef.current.onExitGroup();
       }
     }
 

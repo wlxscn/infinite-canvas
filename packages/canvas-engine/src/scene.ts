@@ -2,9 +2,9 @@ import { isConnectorNode, resolveConnectorPathPoints } from './anchors';
 import { createCanvasRenderRuntime, type CanvasRenderRuntime } from './runtime';
 import { drawCanvasNode, getCanvasNodeBounds } from './canvas-registry';
 import { normalizeBounds } from './geometry';
-import { getNodeById, isContainerNode, resolveNodeToWorld } from './hierarchy';
+import { getNodeById, isGroupNode, resolveNodeToWorld } from './hierarchy';
 import { worldToScreen } from './transform';
-import type { BoardDoc, CanvasNode, ConnectorNode, ContainerNode, FreehandNode, Point, RectNode } from './model';
+import type { BoardDoc, CanvasNode, ConnectorNode, GroupNode, FreehandNode, Point, RectNode } from './model';
 import type { CanvasAssetRecord } from './canvas-registry';
 
 interface RenderOptions {
@@ -13,7 +13,7 @@ interface RenderOptions {
   assets: CanvasAssetRecord[];
   selectedId: string | null;
   hoveredId: string | null;
-  activeContainerId: string | null;
+  activeGroupId: string | null;
   draftRect: RectNode | null;
   draftFreehand: FreehandNode | null;
   draftConnector: ConnectorNode | null;
@@ -80,7 +80,7 @@ function drawNodeTree(
 ): void {
   drawCanvasNode(ctx, node, { board, runtime, rerender });
 
-  if (!isContainerNode(node)) {
+  if (!isGroupNode(node)) {
     return;
   }
 
@@ -89,14 +89,14 @@ function drawNodeTree(
   }
 }
 
-function drawActiveContainerOverlay(
+function drawActiveGroupOverlay(
   ctx: CanvasRenderingContext2D,
   board: BoardDoc,
-  activeContainer: ContainerNode,
+  activeGroup: GroupNode,
   width: number,
   height: number,
 ): void {
-  const bounds = normalizeBounds(resolveNodeToWorld(activeContainer, board));
+  const bounds = normalizeBounds(resolveNodeToWorld(activeGroup, board));
   const topLeft = worldToScreen({ x: bounds.x, y: bounds.y }, board.viewport);
   const screenWidth = bounds.w * board.viewport.scale;
   const screenHeight = bounds.h * board.viewport.scale;
@@ -112,7 +112,7 @@ function drawActiveContainerOverlay(
   ctx.restore();
 }
 
-export function renderScene({ canvas, board, assets, selectedId, hoveredId, activeContainerId, draftRect, draftFreehand, draftConnector }: RenderOptions): void {
+export function renderScene({ canvas, board, assets, selectedId, hoveredId, activeGroupId, draftRect, draftFreehand, draftConnector }: RenderOptions): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) {
     return;
@@ -133,7 +133,7 @@ export function renderScene({ canvas, board, assets, selectedId, hoveredId, acti
   ctx.fillRect(0, 0, width, height);
 
   const rerender = () => {
-    renderScene({ canvas, board, assets, selectedId, hoveredId, activeContainerId, draftRect, draftFreehand, draftConnector });
+    renderScene({ canvas, board, assets, selectedId, hoveredId, activeGroupId, draftRect, draftFreehand, draftConnector });
   };
   const runtime = createCanvasRenderRuntime(assets);
 
@@ -153,9 +153,9 @@ export function renderScene({ canvas, board, assets, selectedId, hoveredId, acti
     drawNodeTree(ctx, board, draftConnector, runtime, rerender);
   }
 
-  const activeContainer = getNodeById(board.nodes, activeContainerId);
-  if (activeContainer && isContainerNode(activeContainer)) {
-    drawActiveContainerOverlay(ctx, board, activeContainer, width, height);
+  const activeGroup = getNodeById(board.nodes, activeGroupId);
+  if (activeGroup && isGroupNode(activeGroup)) {
+    drawActiveGroupOverlay(ctx, board, activeGroup, width, height);
   }
 
   const hoveredNode = hoveredId && hoveredId !== selectedId ? getNodeById(board.nodes, hoveredId) : null;

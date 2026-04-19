@@ -16,7 +16,7 @@ import {
   scaleTolerance,
   screenToWorld,
   translateCanvasNode,
-  worldPointToContainerLocal,
+  worldPointToGroupLocal,
   worldPointToNodeLocal,
   zoomAtScreenPoint,
 } from './index';
@@ -71,7 +71,7 @@ export interface CanvasControllerPointerInput {
 export interface CanvasControllerOptions<TProject extends CanvasProjectLike> {
   project: TProject;
   selectedId: string | null;
-  getActiveContainerId: () => string | null;
+  getActiveGroupId?: () => string | null;
   getTool: () => ToolLike;
   isSpacePressed: () => boolean;
   getConnectorPathMode: () => ConnectorPathMode;
@@ -81,7 +81,7 @@ export interface CanvasControllerOptions<TProject extends CanvasProjectLike> {
   createConnectorNode: (anchor: AnchorTargetLike, point: Point, pathMode: ConnectorPathMode) => ConnectorNode;
   getNodeById: (nodes: CanvasNode[], id: string | null) => CanvasNode | null;
   upsertNode: (nodes: CanvasNode[], node: CanvasNode) => CanvasNode[];
-  insertNodeIntoContainer: (nodes: CanvasNode[], containerId: string, node: CanvasNode) => CanvasNode[];
+  insertNodeIntoGroup?: (nodes: CanvasNode[], groupId: string, node: CanvasNode) => CanvasNode[];
   onSelect: (id: string | null) => void;
   onReplaceProject: (project: TProject) => void;
   onCommitProject: (project: TProject) => void;
@@ -185,6 +185,9 @@ export function createCanvasInteractionController<TProject extends CanvasProject
         viewport: BoardDoc['viewport'];
       }
     | null = null;
+
+  const getActiveGroupId = options.getActiveGroupId ?? (() => null);
+  const insertNodeIntoGroup = options.insertNodeIntoGroup ?? ((nodes) => nodes);
 
   function emitState(nextState: CanvasInteractionState): void {
     state = nextState;
@@ -436,7 +439,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       }
 
       const tolerance = scaleTolerance(6, currentBoard.viewport.scale);
-      const contextNodes = getNodesInContext(currentBoard, options.getActiveContainerId());
+      const contextNodes = getNodesInContext(currentBoard, getActiveGroupId());
 
       if (options.getTool() === 'select') {
         const selectedNode = options.getNodeById(currentBoard.nodes, selectedIdRef);
@@ -512,7 +515,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
 
       if (options.getTool() === 'rect') {
         selectNode(null);
-        const localPoint = worldPointToContainerLocal(currentBoard, options.getActiveContainerId(), worldPoint);
+        const localPoint = worldPointToGroupLocal(currentBoard, getActiveGroupId(), worldPoint);
         updateState({
           pointerMode: 'drawing-rect',
           draftRect: options.createRectNode(localPoint),
@@ -524,7 +527,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
 
       if (options.getTool() === 'freehand') {
         selectNode(null);
-        const localPoint = worldPointToContainerLocal(currentBoard, options.getActiveContainerId(), worldPoint);
+        const localPoint = worldPointToGroupLocal(currentBoard, getActiveGroupId(), worldPoint);
         updateState({
           pointerMode: 'drawing-freehand',
           draftFreehand: options.createFreehandNode(localPoint),
@@ -535,13 +538,13 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       }
 
       if (options.getTool() === 'text') {
-        const localPoint = worldPointToContainerLocal(currentBoard, options.getActiveContainerId(), worldPoint);
+        const localPoint = worldPointToGroupLocal(currentBoard, getActiveGroupId(), worldPoint);
         const node = options.createTextNode(localPoint);
-        const activeContainerId = options.getActiveContainerId();
+        const activeGroupId = getActiveGroupId();
         const nextProject = updateBoard({
           ...currentBoard,
-          nodes: activeContainerId
-            ? options.insertNodeIntoContainer(currentBoard.nodes, activeContainerId, node)
+          nodes: activeGroupId
+            ? insertNodeIntoGroup(currentBoard.nodes, activeGroupId, node)
             : [...currentBoard.nodes, node],
         });
         options.onCommitProject(nextProject);
@@ -618,7 +621,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
         !options.isSpacePressed()
       ) {
         if (options.getTool() === 'select') {
-          const contextNodes = getNodesInContext(currentBoard, options.getActiveContainerId());
+          const contextNodes = getNodesInContext(currentBoard, getActiveGroupId());
           const hoveredId = pickTopCanvasNode(
             contextNodes,
             worldPoint,
@@ -772,8 +775,8 @@ export function createCanvasInteractionController<TProject extends CanvasProject
         if (!node) {
           return;
         }
-        const activeContainerId = options.getActiveContainerId();
-        const snapNodes = getNodesInContext(currentBoard, activeContainerId);
+        const activeGroupId = getActiveGroupId();
+        const snapNodes = getNodesInContext(currentBoard, activeGroupId);
 
         const snapResult = computeDragSnap({
           node,
@@ -810,7 +813,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       }
 
       if (state.pointerMode === 'drawing-rect' && state.draftRect) {
-        const localPoint = worldPointToContainerLocal(currentBoard, options.getActiveContainerId(), worldPoint);
+        const localPoint = worldPointToGroupLocal(currentBoard, getActiveGroupId(), worldPoint);
         updateState({
           draftRect: {
             ...state.draftRect,
@@ -823,7 +826,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       }
 
       if (state.pointerMode === 'drawing-freehand' && state.draftFreehand) {
-        const localPoint = worldPointToContainerLocal(currentBoard, options.getActiveContainerId(), worldPoint);
+        const localPoint = worldPointToGroupLocal(currentBoard, getActiveGroupId(), worldPoint);
         const points = maybeAppendPoint(
           state.draftFreehand.points,
           localPoint,
@@ -907,11 +910,11 @@ export function createCanvasInteractionController<TProject extends CanvasProject
 
       if (state.pointerMode === 'drawing-rect' && state.draftRect) {
         if (Math.abs(state.draftRect.w) > 1 && Math.abs(state.draftRect.h) > 1) {
-          const activeContainerId = options.getActiveContainerId();
+          const activeGroupId = getActiveGroupId();
           const nextProject = updateBoard({
             ...currentBoard,
-            nodes: activeContainerId
-              ? options.insertNodeIntoContainer(currentBoard.nodes, activeContainerId, state.draftRect)
+            nodes: activeGroupId
+              ? insertNodeIntoGroup(currentBoard.nodes, activeGroupId, state.draftRect)
               : [...currentBoard.nodes, state.draftRect],
           });
           options.onCommitProject(nextProject);
@@ -922,11 +925,11 @@ export function createCanvasInteractionController<TProject extends CanvasProject
 
       if (state.pointerMode === 'drawing-freehand' && state.draftFreehand) {
         if (state.draftFreehand.points.length > 1) {
-          const activeContainerId = options.getActiveContainerId();
+          const activeGroupId = getActiveGroupId();
           const nextProject = updateBoard({
             ...currentBoard,
-            nodes: activeContainerId
-              ? options.insertNodeIntoContainer(currentBoard.nodes, activeContainerId, state.draftFreehand)
+            nodes: activeGroupId
+              ? insertNodeIntoGroup(currentBoard.nodes, activeGroupId, state.draftFreehand)
               : [...currentBoard.nodes, state.draftFreehand],
           });
           options.onCommitProject(nextProject);

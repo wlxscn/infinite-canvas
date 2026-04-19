@@ -578,7 +578,7 @@ test('rect, freehand, text, and media nodes remain available after engine-backed
   expect(project.board.nodes.find((node: { id: string }) => node.id === 'node_image_seed').x).toBe(120);
 });
 
-test('containers can wrap content, enter editing context, and persist child geometry after reload', async ({ page }) => {
+test('groups can wrap content, enter editing context, and persist child geometry after reload', async ({ page }) => {
   await page.addInitScript(([storageKey, project]) => {
     if (window.sessionStorage.getItem('__seeded_project__') === 'true') {
       return;
@@ -599,20 +599,21 @@ test('containers can wrap content, enter editing context, and persist child geom
 
   await page.getByRole('button', { name: '选择' }).click();
   await page.mouse.click(box.x + 110, box.y + 90);
-  await expect(page.getByRole('button', { name: '包裹为容器' })).toBeVisible();
-  await page.getByRole('button', { name: '包裹为容器' }).click();
+  const groupSelectionButton = page.getByRole('button', { name: '成组', exact: true });
+  await expect(groupSelectionButton).toBeVisible();
+  await groupSelectionButton.click();
   await page.waitForTimeout(250);
 
   let project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
-  let container = project.board.nodes.find((node: { type: string }) => node.type === 'container');
-  expect(container).toBeTruthy();
-  expect(container.children).toHaveLength(1);
-  expect(container.children[0].id).toBe('node_rect_seed');
+  let group = project.board.nodes.find((node: { type: string }) => node.type === 'group');
+  expect(group).toBeTruthy();
+  expect(group.children).toHaveLength(1);
+  expect(group.children[0].id).toBe('node_rect_seed');
 
   await page.mouse.click(box.x + 110, box.y + 90);
   await expect(page.getByRole('button', { name: '进入' })).toBeVisible();
   await page.getByRole('button', { name: '进入' }).click();
-  await expect(page.getByText('正在编辑容器')).toBeVisible();
+  await expect(page.getByText('正在编辑成组')).toBeVisible();
 
   await page.mouse.move(box.x + 110, box.y + 90);
   await page.mouse.down();
@@ -621,19 +622,19 @@ test('containers can wrap content, enter editing context, and persist child geom
   await page.waitForTimeout(250);
 
   project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
-  container = project.board.nodes.find((node: { type: string }) => node.type === 'container');
-  expect(container.children[0].x).toBeGreaterThan(24);
-  expect(container.x).toBeLessThan(container.children[0].x + container.x);
+  group = project.board.nodes.find((node: { type: string }) => node.type === 'group');
+  expect(group.children[0].x).toBeGreaterThan(24);
+  expect(group.x).toBeLessThan(group.children[0].x + group.x);
 
-  await page.getByRole('button', { name: '退出容器' }).click();
-  await expect(page.getByText('正在编辑容器')).toHaveCount(0);
+  await page.getByRole('button', { name: '退出成组' }).click();
+  await expect(page.getByText('正在编辑成组')).toHaveCount(0);
 
   await page.reload();
   project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
-  container = project.board.nodes.find((node: { type: string }) => node.type === 'container');
-  expect(container).toBeTruthy();
-  expect(container.children[0].id).toBe('node_rect_seed');
-  expect(container.children[0].x).toBeGreaterThan(24);
+  group = project.board.nodes.find((node: { type: string }) => node.type === 'group');
+  expect(group).toBeTruthy();
+  expect(group.children[0].id).toBe('node_rect_seed');
+  expect(group.children[0].x).toBeGreaterThan(24);
 });
 
 test('voice drafts stay editable until the user sends them from the sidebar composer', async ({ page }) => {

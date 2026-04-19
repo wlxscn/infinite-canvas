@@ -1,22 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { createDeferredProjectSaver } from '../persistence/local';
 import {
-  canExitActiveContainer,
-  createContainerNode,
+  canExitActiveGroup,
+  createGroupNode,
   bringNodeForward,
   commitProject,
-  dissolveContainerNode,
+  dissolveGroupNode,
   finalizeMutation,
-  getNodeParentContainerId,
-  moveNodeOutOfContainer,
+  getNodeParentGroupId,
+  moveNodeOutOfGroup,
   redo,
   removeNodeById,
   replaceProjectNoHistory,
   sendNodeBackward,
-  setActiveContainerId,
+  setActiveGroupId,
   setSelectedId,
   undo,
-  wrapNodeInNewContainer,
+  wrapNodeInNewGroup,
 } from '../state/store';
 import { useCanvasKeyboardShortcuts } from './useCanvasKeyboardShortcuts';
 import type { CanvasProject, CanvasStoreState } from '../types/canvas';
@@ -96,8 +96,8 @@ export function useCanvasWorkspaceController({ state, setState }: UseCanvasWorks
         return setSelectedId(nextState, null);
       });
     },
-    onExitContainer: () => {
-      setState((prev) => (prev.activeContainerId ? setActiveContainerId(setSelectedId(prev, null), null) : prev));
+    onExitGroup: () => {
+      setState((prev) => (prev.activeGroupId ? setActiveGroupId(setSelectedId(prev, null), null) : prev));
     },
   });
 
@@ -105,16 +105,16 @@ export function useCanvasWorkspaceController({ state, setState }: UseCanvasWorks
     setState((prev) => setSelectedId(prev, id));
   }
 
-  function handleEnterContainer(id: string | null): void {
+  function handleEnterGroup(id: string | null): void {
     if (!id) {
       return;
     }
 
-    setState((prev) => setActiveContainerId(setSelectedId(prev, null), id));
+    setState((prev) => setActiveGroupId(setSelectedId(prev, null), id));
   }
 
-  function handleExitContainer(): void {
-    setState((prev) => (prev.activeContainerId ? setActiveContainerId(setSelectedId(prev, null), null) : prev));
+  function handleExitGroup(): void {
+    setState((prev) => (prev.activeGroupId ? setActiveGroupId(setSelectedId(prev, null), null) : prev));
   }
 
   function handleCommitProject(project: CanvasProject): void {
@@ -148,34 +148,34 @@ export function useCanvasWorkspaceController({ state, setState }: UseCanvasWorks
     );
   }
 
-  function createContainerAtViewportCenter(): void {
+  function createGroupAtViewportCenter(): void {
     setState((prev) => {
       const viewport = prev.project.board.viewport;
       const x = (-viewport.tx + 160) / viewport.scale;
       const y = (-viewport.ty + 120) / viewport.scale;
-      const container = createContainerNode(x, y);
+      const group = createGroupNode(x, y);
       const nextProject: CanvasProject = {
         ...prev.project,
         board: {
           ...prev.project.board,
-          nodes: [...prev.project.board.nodes, container],
+          nodes: [...prev.project.board.nodes, group],
         },
       };
-      return setSelectedId(commitProject(prev, nextProject), container.id);
+      return setSelectedId(commitProject(prev, nextProject), group.id);
     });
   }
 
-  function wrapSelectionInContainer(): void {
+  function groupSelection(): void {
     if (!state.selectedId) {
       return;
     }
 
     setState((prev) => {
-      const nextNodes = wrapNodeInNewContainer(prev.project.board.nodes, prev.selectedId!);
+      const nextNodes = wrapNodeInNewGroup(prev.project.board.nodes, prev.selectedId!);
       if (nextNodes === prev.project.board.nodes) {
         return prev;
       }
-      const container = nextNodes[nextNodes.length - 1];
+      const group = nextNodes[nextNodes.length - 1];
       const nextProject: CanvasProject = {
         ...prev.project,
         board: {
@@ -183,38 +183,17 @@ export function useCanvasWorkspaceController({ state, setState }: UseCanvasWorks
           nodes: nextNodes,
         },
       };
-      return setSelectedId(commitProject(prev, nextProject), container.id);
+      return setSelectedId(commitProject(prev, nextProject), group.id);
     });
   }
 
-  function moveSelectionOutOfContainer(): void {
+  function moveSelectionOutOfGroup(): void {
     if (!state.selectedId) {
       return;
     }
 
     setState((prev) => {
-      const nextNodes = moveNodeOutOfContainer(prev.project.board.nodes, prev.selectedId!);
-      if (nextNodes === prev.project.board.nodes) {
-        return prev;
-      }
-      const nextProject: CanvasProject = {
-        ...prev.project,
-        board: {
-          ...prev.project.board,
-          nodes: nextNodes,
-        },
-      };
-      return commitProject(setActiveContainerId(prev, prev.activeContainerId), nextProject);
-    });
-  }
-
-  function dissolveSelectedContainer(): void {
-    if (!state.selectedId) {
-      return;
-    }
-
-    setState((prev) => {
-      const nextNodes = dissolveContainerNode(prev.project.board.nodes, prev.selectedId!);
+      const nextNodes = moveNodeOutOfGroup(prev.project.board.nodes, prev.selectedId!);
       if (nextNodes === prev.project.board.nodes) {
         return prev;
       }
@@ -225,7 +204,28 @@ export function useCanvasWorkspaceController({ state, setState }: UseCanvasWorks
           nodes: nextNodes,
         },
       };
-      return setActiveContainerId(setSelectedId(commitProject(prev, nextProject), null), null);
+      return commitProject(setActiveGroupId(prev, prev.activeGroupId), nextProject);
+    });
+  }
+
+  function dissolveSelectedGroup(): void {
+    if (!state.selectedId) {
+      return;
+    }
+
+    setState((prev) => {
+      const nextNodes = dissolveGroupNode(prev.project.board.nodes, prev.selectedId!);
+      if (nextNodes === prev.project.board.nodes) {
+        return prev;
+      }
+      const nextProject: CanvasProject = {
+        ...prev.project,
+        board: {
+          ...prev.project.board,
+          nodes: nextNodes,
+        },
+      };
+      return setActiveGroupId(setSelectedId(commitProject(prev, nextProject), null), null);
     });
   }
 
@@ -239,28 +239,28 @@ export function useCanvasWorkspaceController({ state, setState }: UseCanvasWorks
     window.setTimeout(() => URL.revokeObjectURL(href), 0);
   }
 
-  const selectedParentContainerId = state.selectedId
-    ? getNodeParentContainerId(state.project.board.nodes, state.selectedId)
+  const selectedParentGroupId = state.selectedId
+    ? getNodeParentGroupId(state.project.board.nodes, state.selectedId)
     : null;
 
   return {
     isSpacePressed,
     canUndo: state.past.length > 0,
     canRedo: state.future.length > 0,
-    activeContainerId: state.activeContainerId,
-    canExitContainer: canExitActiveContainer(state.project.board.nodes, state.activeContainerId),
-    selectedParentContainerId,
+    activeGroupId: state.activeGroupId,
+    canExitGroup: canExitActiveGroup(state.project.board.nodes, state.activeGroupId),
+    selectedParentGroupId,
     handleSelect,
-    handleEnterContainer,
-    handleExitContainer,
+    handleEnterGroup,
+    handleExitGroup,
     handleCommitProject,
     handleReplaceProject,
     handleFinalizeMutation,
     nudgeLayer,
-    createContainerAtViewportCenter,
-    wrapSelectionInContainer,
-    moveSelectionOutOfContainer,
-    dissolveSelectedContainer,
+    createGroupAtViewportCenter,
+    groupSelection,
+    moveSelectionOutOfGroup,
+    dissolveSelectedGroup,
     exportProjectJson,
   };
 }

@@ -1,9 +1,9 @@
 import { normalizeBounds, pointInBounds, type Bounds } from '../geometry';
 import { worldToScreen } from '../transform';
 import { resolveNodeToWorld } from '../hierarchy';
-import type { BoardDoc, ContainerNode, Point, RectNode, TextNode, ImageNode, VideoNode, Viewport } from '../model';
+import type { BoardDoc, GroupNode, Point, RectNode, TextNode, ImageNode, VideoNode, Viewport } from '../model';
 
-type BoxNode = RectNode | TextNode | ImageNode | VideoNode | ContainerNode;
+type BoxNode = RectNode | TextNode | ImageNode | VideoNode | GroupNode;
 
 export function getBoxBounds(node: BoxNode, board?: BoardDoc): Bounds {
   return normalizeBounds(resolveNodeToWorld(node, board));

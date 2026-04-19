@@ -1,5 +1,5 @@
 import { normalizeBounds, type Bounds } from './geometry';
-import { getAllDescendantNodes, getNodeById, isContainerNode, resolveNodeToWorld } from './hierarchy';
+import { getAllDescendantNodes, getNodeById, isGroupNode, resolveNodeToWorld } from './hierarchy';
 import type {
   AnchorId,
   AttachedConnectorEndpoint,
@@ -88,7 +88,7 @@ export function findAnchorTarget(
     const node = allNodes[index];
     if (
       !isBoxNode(node) ||
-      isContainerNode(node) ||
+      isGroupNode(node) ||
       node.id === options.excludeNodeId ||
       node.id === options.excludeConnectorId
     ) {

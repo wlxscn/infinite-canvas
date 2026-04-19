@@ -64,16 +64,16 @@ export interface VideoNode {
 }
 
 export type BoxNode = RectNode | TextNode | ImageNode | VideoNode;
-export type ContainerChildNode = RectNode | FreehandNode | TextNode | ImageNode | VideoNode;
+export type GroupChildNode = RectNode | FreehandNode | TextNode | ImageNode | VideoNode;
 
-export interface ContainerNode {
+export interface GroupNode {
   id: string;
-  type: 'container';
+  type: 'group';
   x: number;
   y: number;
   w: number;
   h: number;
-  children: ContainerChildNode[];
+  children: GroupChildNode[];
   name?: string;
 }
 
@@ -104,7 +104,14 @@ export interface ConnectorNode {
   waypoints?: Point[];
 }
 
-export type CanvasNode = RectNode | FreehandNode | TextNode | ImageNode | VideoNode | ConnectorNode | ContainerNode;
+export type CanvasNode =
+  | RectNode
+  | FreehandNode
+  | TextNode
+  | ImageNode
+  | VideoNode
+  | ConnectorNode
+  | GroupNode;
 export type Shape = RectNode | FreehandNode;
 
 export interface BoardDoc {

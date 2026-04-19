@@ -1,5 +1,5 @@
 import { createEmptyProject } from '../state/store';
-import type { CanvasProject, ChatSession, Point } from '../types/canvas';
+import type { CanvasNode, CanvasProject, ChatSession, Point } from '../types/canvas';
 
 export const STORAGE_KEY = 'infinite-canvas:v2';
 const LEGACY_STORAGE_KEY = 'infinite-canvas:v1';
@@ -79,6 +79,30 @@ function normalizeSession(session: Partial<ChatSession>): ChatSession {
   };
 }
 
+function normalizeNodes(nodes: unknown): CanvasNode[] {
+  if (!Array.isArray(nodes)) {
+    return [];
+  }
+
+  return nodes.flatMap((node) => {
+    if (!node || typeof node !== 'object') {
+      return [];
+    }
+
+    const candidate = node as Record<string, unknown>;
+    if (candidate.type === 'group') {
+      return [
+        {
+          ...candidate,
+          children: normalizeNodes(candidate.children),
+        } as unknown as CanvasNode,
+      ];
+    }
+
+    return [candidate as unknown as CanvasNode];
+  });
+}
+
 function normalizeProject(value: PersistedProject): CanvasProject {
   const sessions =
     value.chat && Array.isArray(value.chat.sessions) ? value.chat.sessions.map((session) => normalizeSession(session)) : [];
@@ -89,6 +113,10 @@ function normalizeProject(value: PersistedProject): CanvasProject {
 
   return {
     ...value,
+    board: {
+      ...value.board,
+      nodes: normalizeNodes(value.board?.nodes),
+    },
     chat: {
       activeSessionId,
       sessions,

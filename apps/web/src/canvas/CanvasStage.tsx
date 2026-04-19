@@ -29,7 +29,7 @@ import { VideoOverlayLayer } from './VideoOverlayLayer';
 import { useCanvasRulerModel, type CanvasRulerAxisModel } from '../hooks/useCanvasRulerModel';
 import { createId } from '../utils/id';
 import type { CanvasNode, CanvasProject, Point, Tool } from '../types/canvas';
-import { getNodeById, insertNodeIntoContainer, upsertNode } from '../state/store';
+import { getNodeById, insertNodeIntoGroup, upsertNode } from '../state/store';
 
 const RULER_SIZE = 28;
 
@@ -38,7 +38,7 @@ interface CanvasStageProps {
   tool: Tool;
   connectorPathMode: ConnectorPathMode;
   selectedId: string | null;
-  activeContainerId: string | null;
+  activeGroupId: string | null;
   isSpacePressed: boolean;
   onInteractionActiveChange: (active: boolean) => void;
   onSelect: (id: string | null) => void;
@@ -251,7 +251,7 @@ export function CanvasStage({
   tool,
   connectorPathMode,
   selectedId,
-  activeContainerId,
+  activeGroupId,
   isSpacePressed,
   onInteractionActiveChange,
   onSelect,
@@ -286,13 +286,13 @@ export function CanvasStage({
         assets: nextProject.assets,
         selectedId: selectedNodeId,
         hoveredId: state.hoveredNodeId,
-        activeContainerId,
+        activeGroupId,
         draftRect: state.draftRect,
         draftFreehand: state.draftFreehand,
         draftConnector: state.draftConnector,
       });
     },
-    [activeContainerId],
+    [activeGroupId],
   );
 
   useEffect(() => {
@@ -314,7 +314,7 @@ export function CanvasStage({
     const controller = createCanvasInteractionController({
       project: initialProjectRef.current,
       selectedId: initialSelectedIdRef.current,
-      getActiveContainerId: () => activeContainerId,
+      getActiveGroupId: () => activeGroupId,
       getTool: () => toolRef.current,
       isSpacePressed: () => isSpacePressedRef.current,
       getConnectorPathMode: () => connectorPathMode,
@@ -367,7 +367,7 @@ export function CanvasStage({
       }),
       getNodeById,
       upsertNode,
-      insertNodeIntoContainer,
+      insertNodeIntoGroup,
       onSelect: (id) => onSelectRef.current(id),
       onReplaceProject: (nextProject) => onReplaceProjectRef.current(nextProject),
       onCommitProject: (nextProject) => onCommitProjectRef.current(nextProject),
@@ -385,7 +385,7 @@ export function CanvasStage({
       controller.dispose();
       controllerRef.current = null;
     };
-  }, [activeContainerId, connectorPathMode, renderProjectNow]);
+  }, [activeGroupId, connectorPathMode, renderProjectNow]);
 
   useEffect(() => {
     controllerRef.current?.syncProject(project);
