@@ -53,8 +53,16 @@ function App() {
   usePreventBrowserZoom();
 
   const selectedNode = useMemo(() => getSelectedNode(state), [state]);
+  const selectedNodes = useMemo(
+    () => state.selectedIds.map((id) => getNodeById(state.project.board.nodes, id)).filter((node): node is NonNullable<typeof node> => !!node),
+    [state.project.board.nodes, state.selectedIds],
+  );
   const isSelectedGroup = selectedNode?.type === 'group';
-  const { selectedAsset, statsText, selectionToolbarStyle, hasCanvasContent, latestJob } = useWorkspaceViewModel(state, selectedNode);
+  const { selectedAsset, statsText, selectionToolbarStyle, hasCanvasContent, latestJob } = useWorkspaceViewModel(
+    state,
+    selectedNodes,
+    selectedNode,
+  );
   const {
     isSpacePressed,
     canUndo,
@@ -139,23 +147,26 @@ function App() {
           <main className="canvas-workspace">
             {!hasCanvasContent ? <CanvasHero /> : null}
 
-            {selectedNode && selectionToolbarStyle && !isCanvasInteractionActive ? (
+            {selectedNodes.length > 0 && selectionToolbarStyle && !isCanvasInteractionActive ? (
               <SelectionToolbar
                 selectedNode={selectedNode}
+                selectedCount={selectedNodes.length}
                 board={state.project.board}
                 style={selectionToolbarStyle}
                 onMoveBackward={() => nudgeLayer('backward')}
                 onMoveForward={() => nudgeLayer('forward')}
-                onEnterGroup={isSelectedGroup ? () => handleEnterGroup(selectedNode.id) : undefined}
+                onEnterGroup={selectedNode && isSelectedGroup ? () => handleEnterGroup(selectedNode.id) : undefined}
                 onGroupSelection={
-                  !activeGroupId && !isSelectedGroup && selectedNode.type !== 'connector'
+                  !activeGroupId &&
+                  selectedNodes.length > 0 &&
+                  selectedNodes.every((node) => node.type !== 'connector' && node.type !== 'group')
                     ? groupSelection
                     : undefined
                 }
                 onMoveOutOfGroup={
                   activeGroupId &&
                   selectedParentGroupId === activeGroupId &&
-                  selectedNode.type !== 'connector' &&
+                  selectedNode?.type !== 'connector' &&
                   !isSelectedGroup
                     ? moveSelectionOutOfGroup
                     : undefined
@@ -179,6 +190,7 @@ function App() {
                 tool={state.tool}
                 connectorPathMode={connectorPathMode}
                 selectedId={state.selectedId}
+                selectedIds={state.selectedIds}
                 activeGroupId={activeGroupId}
                 isSpacePressed={isSpacePressed}
                 onInteractionActiveChange={setIsCanvasInteractionActive}

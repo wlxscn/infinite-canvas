@@ -3,7 +3,8 @@ import { getCanvasNodeBounds, normalizeBounds } from '@infinite-canvas/canvas-en
 import type { CanvasNode } from '../types/canvas';
 
 interface SelectionToolbarProps {
-  selectedNode: CanvasNode;
+  selectedNode: CanvasNode | null;
+  selectedCount: number;
   board: import('../types/canvas').BoardDoc;
   style: CSSProperties;
   onMoveBackward: () => void;
@@ -16,6 +17,7 @@ interface SelectionToolbarProps {
 
 export function SelectionToolbar({
   selectedNode,
+  selectedCount,
   board,
   style,
   onMoveBackward,
@@ -25,46 +27,58 @@ export function SelectionToolbar({
   onMoveOutOfGroup,
   onDissolveGroup,
 }: SelectionToolbarProps) {
-  const bounds = normalizeBounds(getCanvasNodeBounds(selectedNode, board));
-  const isGroupNode = selectedNode.type === 'group';
+  if (!selectedNode && selectedCount <= 1) {
+    return null;
+  }
+
+  const bounds =
+    selectedNode && selectedCount === 1 ? normalizeBounds(getCanvasNodeBounds(selectedNode, board)) : { w: 0, h: 0 };
+  const isGroupNode = selectedNode?.type === 'group';
+  const isMultiSelection = selectedCount > 1;
 
   return (
     <section
       className="selection-toolbar"
       style={style}
       aria-label="选中对象工具栏"
-      data-node-type={selectedNode.type}
+      data-node-type={selectedNode?.type ?? 'multi'}
     >
       <div className="selection-pill">
-        <span>{selectedNode.type}</span>
+        <span>{isMultiSelection ? `已选 ${selectedCount} 项` : selectedNode?.type}</span>
       </div>
-      <div className="selection-pill">
-        <span>
-          W {Math.round(bounds.w)} H {Math.round(bounds.h)}
-        </span>
-      </div>
-      <button className="toolbar-icon-btn" type="button" onClick={onMoveBackward}>
-        下移
-      </button>
-      <button className="toolbar-icon-btn" type="button" onClick={onMoveForward}>
-        上移
-      </button>
-      {isGroupNode && onEnterGroup ? (
+      {!isMultiSelection ? (
+        <div className="selection-pill">
+          <span>
+            W {Math.round(bounds.w)} H {Math.round(bounds.h)}
+          </span>
+        </div>
+      ) : null}
+      {!isMultiSelection ? (
+        <button className="toolbar-icon-btn" type="button" onClick={onMoveBackward}>
+          下移
+        </button>
+      ) : null}
+      {!isMultiSelection ? (
+        <button className="toolbar-icon-btn" type="button" onClick={onMoveForward}>
+          上移
+        </button>
+      ) : null}
+      {!isMultiSelection && isGroupNode && onEnterGroup ? (
         <button className="toolbar-icon-btn" type="button" onClick={onEnterGroup}>
           进入
         </button>
       ) : null}
-      {!isGroupNode && selectedNode.type !== 'connector' && onGroupSelection ? (
+      {(!isGroupNode || isMultiSelection) && onGroupSelection ? (
         <button className="toolbar-icon-btn" type="button" onClick={onGroupSelection}>
           成组
         </button>
       ) : null}
-      {!isGroupNode && selectedNode.type !== 'connector' && onMoveOutOfGroup ? (
+      {!isMultiSelection && !isGroupNode && selectedNode?.type !== 'connector' && onMoveOutOfGroup ? (
         <button className="toolbar-icon-btn" type="button" onClick={onMoveOutOfGroup}>
           移出成组
         </button>
       ) : null}
-      {isGroupNode && onDissolveGroup ? (
+      {!isMultiSelection && isGroupNode && onDissolveGroup ? (
         <button className="toolbar-icon-btn" type="button" onClick={onDissolveGroup}>
           拆分组
         </button>

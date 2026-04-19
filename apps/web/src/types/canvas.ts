@@ -80,6 +80,7 @@ export interface CanvasStoreState {
   project: CanvasProject;
   tool: Tool;
   selectedId: string | null;
+  selectedIds: string[];
   activeGroupId: string | null;
   past: CanvasProject[];
   future: CanvasProject[];

@@ -7,6 +7,11 @@ The system SHALL allow supported canvas nodes to be combined into a unified grou
 - **WHEN** a user invokes the group action on supported selected canvas nodes
 - **THEN** the system creates a group object that contains those nodes and replaces direct individual manipulation with group-level selection
 
+#### Scenario: Group multiple selected nodes in one action
+- **WHEN** a user has multiple supported nodes selected within the same editing context and invokes the group action
+- **THEN** the system creates one group containing all selected nodes from that context
+- **AND** the resulting selection becomes the new group
+
 #### Scenario: Group supports whole-object editing
 - **WHEN** a user selects a group on the canvas without entering it
 - **THEN** the system exposes move, resize, reorder, and delete behavior at the group level

@@ -3,14 +3,14 @@ import { getAllDescendantNodes, getCanvasNodeBounds, normalizeBounds, worldToScr
 import { getAssetById } from '../state/store';
 import type { CanvasNode, CanvasStoreState } from '../types/canvas';
 
-export function useWorkspaceViewModel(state: CanvasStoreState, selectedNode: CanvasNode | null) {
+export function useWorkspaceViewModel(state: CanvasStoreState, selectedNodes: CanvasNode[], selectedNode: CanvasNode | null) {
   const selectedAsset = useMemo(() => {
-    if (!selectedNode || (selectedNode.type !== 'image' && selectedNode.type !== 'video')) {
+    if (selectedNodes.length !== 1 || !selectedNode || (selectedNode.type !== 'image' && selectedNode.type !== 'video')) {
       return null;
     }
 
     return getAssetById(state.project.assets, selectedNode.assetId);
-  }, [selectedNode, state.project.assets]);
+  }, [selectedNode, selectedNodes.length, state.project.assets]);
 
   const statsText = useMemo(
     () => ({
@@ -22,11 +22,20 @@ export function useWorkspaceViewModel(state: CanvasStoreState, selectedNode: Can
   );
 
   const selectionToolbarStyle = useMemo(() => {
-    if (!selectedNode) {
+    if (selectedNodes.length === 0) {
       return null;
     }
 
-    const bounds = normalizeBounds(getCanvasNodeBounds(selectedNode, state.project.board));
+    const normalizedBounds = selectedNodes.map((node) => normalizeBounds(getCanvasNodeBounds(node, state.project.board)));
+    const bounds = normalizedBounds.reduce(
+      (current, next) => ({
+        x: Math.min(current.x, next.x),
+        y: Math.min(current.y, next.y),
+        w: Math.max(current.x + current.w, next.x + next.w) - Math.min(current.x, next.x),
+        h: Math.max(current.y + current.h, next.y + next.h) - Math.min(current.y, next.y),
+      }),
+      normalizedBounds[0],
+    );
     const topLeft = worldToScreen({ x: bounds.x, y: bounds.y }, state.project.board.viewport);
     const width = bounds.w * state.project.board.viewport.scale;
     const top = Math.max(topLeft.y - 68, 84);
@@ -35,7 +44,7 @@ export function useWorkspaceViewModel(state: CanvasStoreState, selectedNode: Can
       left: `clamp(24px, ${topLeft.x + width / 2}px, calc(100% - 24px))`,
       top: `${top}px`,
     };
-  }, [selectedNode, state.project.board]);
+  }, [selectedNodes, state.project.board]);
 
   return {
     selectedAsset,

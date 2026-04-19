@@ -56,6 +56,7 @@ export function createInitialStore(project: CanvasProject): CanvasStoreState {
     project,
     tool: 'select',
     selectedId: null,
+    selectedIds: [],
     activeGroupId: null,
     past: [],
     future: [],
@@ -78,7 +79,25 @@ export function setTool(state: CanvasStoreState, tool: Tool): CanvasStoreState {
 }
 
 export function setSelectedId(state: CanvasStoreState, selectedId: string | null): CanvasStoreState {
-  return { ...state, selectedId };
+  return {
+    ...state,
+    selectedId,
+    selectedIds: selectedId ? [selectedId] : [],
+  };
+}
+
+export function setSelectedIds(
+  state: CanvasStoreState,
+  selectedIds: string[],
+  selectedId: string | null = selectedIds[0] ?? null,
+): CanvasStoreState {
+  const nextIds = [...new Set(selectedIds)];
+  const nextPrimary = selectedId && nextIds.includes(selectedId) ? selectedId : (nextIds[0] ?? null);
+  return {
+    ...state,
+    selectedId: nextPrimary,
+    selectedIds: nextIds,
+  };
 }
 
 export function setActiveGroupId(state: CanvasStoreState, activeGroupId: string | null): CanvasStoreState {
@@ -135,6 +154,7 @@ export function undo(state: CanvasStoreState): CanvasStoreState {
     ...state,
     project: previous,
     selectedId: null,
+    selectedIds: [],
     activeGroupId: null,
     past: state.past.slice(0, -1),
     future: [state.project, ...state.future],
@@ -151,6 +171,7 @@ export function redo(state: CanvasStoreState): CanvasStoreState {
     ...state,
     project: next,
     selectedId: null,
+    selectedIds: [],
     activeGroupId: null,
     past: limitHistory([...state.past, state.project]),
     future: state.future.slice(1),
@@ -227,43 +248,83 @@ export function createGroupNode(x: number, y: number, w = 280, h = 180): GroupNo
 }
 
 export function wrapNodeInNewGroup(nodes: CanvasNode[], nodeId: string): CanvasNode[] {
-  const node = getHierarchicalNodeById(nodes, nodeId);
-  const parentGroupId = getNodeParentGroupId(nodes, nodeId);
-  if (!node || isConnectorNode(node) || node.type === 'group' || parentGroupId) {
+  return wrapNodesInNewGroup(nodes, [nodeId]);
+}
+
+function getNodeBounds(node: CanvasNode): { x: number; y: number; w: number; h: number } {
+  if (node.type === 'freehand') {
+    const minX = Math.min(...node.points.map((point) => point.x));
+    const minY = Math.min(...node.points.map((point) => point.y));
+    const maxX = Math.max(...node.points.map((point) => point.x));
+    const maxY = Math.max(...node.points.map((point) => point.y));
+    return {
+      x: minX,
+      y: minY,
+      w: maxX - minX,
+      h: maxY - minY,
+    };
+  }
+
+  return {
+    x: node.x,
+    y: node.y,
+    w: node.w,
+    h: node.h,
+  };
+}
+
+function toGroupChild(node: CanvasNode, group: GroupNode): GroupNode['children'][number] {
+  if (node.type === 'freehand') {
+    return {
+      ...node,
+      points: node.points.map((point) => ({
+        x: point.x - group.x,
+        y: point.y - group.y,
+      })),
+    };
+  }
+
+  return {
+    ...node,
+    x: node.x - group.x,
+    y: node.y - group.y,
+  };
+}
+
+export function wrapNodesInNewGroup(nodes: CanvasNode[], nodeIds: string[]): CanvasNode[] {
+  const uniqueIds = [...new Set(nodeIds)];
+  if (uniqueIds.length === 0) {
+    return nodes;
+  }
+
+  const validIds = uniqueIds.filter((nodeId) => {
+    const node = getHierarchicalNodeById(nodes, nodeId);
+    return !!node && !isConnectorNode(node) && node.type !== 'group' && !getNodeParentGroupId(nodes, nodeId);
+  });
+
+  if (validIds.length === 0) {
+    return nodes;
+  }
+
+  const orderedNodes = nodes.filter((node) => validIds.includes(node.id));
+  if (orderedNodes.length === 0) {
     return nodes;
   }
 
   const padding = 24;
-  const worldNode = node;
-  let group: GroupNode;
-  if (worldNode.type === 'freehand') {
-    const minX = Math.min(...worldNode.points.map((point) => point.x));
-    const minY = Math.min(...worldNode.points.map((point) => point.y));
-    const maxX = Math.max(...worldNode.points.map((point) => point.x));
-    const maxY = Math.max(...worldNode.points.map((point) => point.y));
-    group = createGroupNode(minX - padding, minY - padding, maxX - minX + padding * 2, maxY - minY + padding * 2);
-    group.children = [
-      {
-        ...worldNode,
-        points: worldNode.points.map((point) => ({
-          x: point.x - group.x,
-          y: point.y - group.y,
-        })),
-      },
-    ];
-  } else {
-    group = createGroupNode(worldNode.x - padding, worldNode.y - padding, worldNode.w + padding * 2, worldNode.h + padding * 2);
-    group.children = [
-      {
-        ...worldNode,
-        x: worldNode.x - group.x,
-        y: worldNode.y - group.y,
-      },
-    ];
-  }
+  const bounds = orderedNodes.map(getNodeBounds);
+  const minX = Math.min(...bounds.map((bound) => bound.x));
+  const minY = Math.min(...bounds.map((bound) => bound.y));
+  const maxX = Math.max(...bounds.map((bound) => bound.x + bound.w));
+  const maxY = Math.max(...bounds.map((bound) => bound.y + bound.h));
+  const group = createGroupNode(minX - padding, minY - padding, maxX - minX + padding * 2, maxY - minY + padding * 2);
+  group.children = orderedNodes.map((currentNode) => toGroupChild(currentNode, group));
 
-  const withoutNode = removeNodeById(nodes, nodeId);
-  return [...withoutNode, group];
+  const firstIndex = nodes.findIndex((candidate) => validIds.includes(candidate.id));
+  const remainingNodes = nodes.filter((candidate) => !validIds.includes(candidate.id));
+  const nextNodes = remainingNodes.slice();
+  nextNodes.splice(firstIndex === -1 ? nextNodes.length : firstIndex, 0, group);
+  return nextNodes;
 }
 
 export function moveNodeOutOfGroup(nodes: CanvasNode[], nodeId: string): CanvasNode[] {
