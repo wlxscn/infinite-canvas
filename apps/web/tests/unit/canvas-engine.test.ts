@@ -12,13 +12,14 @@ import {
   hitCanvasNodeResizeHandle,
   hitTestCanvasNode,
   moveNodeOutOfGroup,
+  renderScene,
   resizeCanvasNode,
   resolveConnectorPathPoints,
   resolveConnectorPoints,
   translateCanvasNode,
 } from '@infinite-canvas/canvas-engine';
 import { createEmptyProject, getNodeById, removeNodeById, upsertNode } from '../../src/state/store';
-import { dissolveGroupNode, wrapNodeInNewGroup } from '../../src/state/store';
+import { dissolveGroupNode, wrapNodeInNewGroup, wrapNodesInNewGroup } from '../../src/state/store';
 import type { CanvasNode } from '../../src/types/canvas';
 
 function createDraftConnector(
@@ -206,6 +207,122 @@ describe('canvas engine', () => {
       x: 120,
       y: 80,
     });
+  });
+
+  it('creates one group from multiple selected top-level nodes in a single action', () => {
+    const rectNode: CanvasNode = {
+      id: 'node_rect_1',
+      type: 'rect',
+      x: 120,
+      y: 80,
+      w: 140,
+      h: 100,
+      stroke: '#000',
+    };
+    const textNode: CanvasNode = {
+      id: 'node_text_1',
+      type: 'text',
+      x: 320,
+      y: 110,
+      w: 180,
+      h: 80,
+      text: 'Group me',
+      color: '#111827',
+      fontSize: 18,
+      fontFamily: 'sans-serif',
+    };
+
+    const nextNodes = wrapNodesInNewGroup([rectNode, textNode], [rectNode.id, textNode.id]);
+    expect(nextNodes).toHaveLength(1);
+    expect(nextNodes[0].type).toBe('group');
+    if (nextNodes[0].type !== 'group') {
+      return;
+    }
+
+    expect(nextNodes[0].children).toHaveLength(2);
+    expect(nextNodes[0].children.map((child) => child.id)).toEqual(['node_rect_1', 'node_text_1']);
+    expect(nextNodes[0].children[0]).toMatchObject({
+      x: 24,
+      y: 24,
+    });
+    expect(nextNodes[0].children[1]).toMatchObject({
+      x: 224,
+      y: 54,
+    });
+  });
+
+  it('does not clear active group children when rendering the group editing overlay', () => {
+    const canvas = document.createElement('canvas');
+    Object.defineProperty(canvas, 'clientWidth', { value: 800 });
+    Object.defineProperty(canvas, 'clientHeight', { value: 600 });
+
+    const calls: string[] = [];
+    const ctx = {
+      setTransform: vi.fn(),
+      clearRect: vi.fn((x: number, y: number, w: number, h: number) => {
+        calls.push(`clearRect:${x},${y},${w},${h}`);
+      }),
+      fillRect: vi.fn((x: number, y: number, w: number, h: number) => {
+        calls.push(`fillRect:${x},${y},${w},${h}`);
+      }),
+      strokeRect: vi.fn((x: number, y: number, w: number, h: number) => {
+        calls.push(`strokeRect:${x},${y},${w},${h}`);
+      }),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      rect: vi.fn(),
+      fill: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      setLineDash: vi.fn(),
+      fillText: vi.fn(),
+    } as unknown as CanvasRenderingContext2D;
+
+    vi.spyOn(canvas, 'getContext').mockReturnValue(ctx);
+
+    const board = {
+      version: 2 as const,
+      viewport: { tx: 0, ty: 0, scale: 1 },
+      nodes: [
+        {
+          id: 'group_1',
+          type: 'group' as const,
+          x: 80,
+          y: 60,
+          w: 240,
+          h: 180,
+          children: [
+            {
+              id: 'node_rect_child',
+              type: 'rect' as const,
+              x: 24,
+              y: 24,
+              w: 120,
+              h: 90,
+              stroke: '#000',
+            },
+          ],
+        },
+      ],
+    };
+
+    renderScene({
+      canvas,
+      board,
+      assets: [],
+      selectedId: null,
+      hoveredId: null,
+      activeGroupId: 'group_1',
+      draftRect: null,
+      draftFreehand: null,
+      draftConnector: null,
+    });
+
+    expect(ctx.clearRect).toHaveBeenCalledTimes(1);
+    expect(calls).toContain('clearRect:0,0,800,600');
+    expect(calls).not.toContain('clearRect:80,60,240,180');
   });
 
   it('translates and resizes supported nodes through shared engine helpers', () => {
@@ -910,6 +1027,224 @@ describe('canvas engine', () => {
     });
     expect(onSelect).toHaveBeenLastCalledWith('node_rect_child');
     insideController.dispose();
+  });
+
+  it('starts marquee selection from empty space and returns matched non-connector ids', () => {
+    const base = createEmptyProject();
+    const project = {
+      ...base,
+      board: {
+        ...base.board,
+        nodes: [
+          {
+            id: 'node_rect_1',
+            type: 'rect' as const,
+            x: 40,
+            y: 40,
+            w: 120,
+            h: 80,
+            stroke: '#000',
+          },
+          {
+            id: 'node_text_1',
+            type: 'text' as const,
+            x: 220,
+            y: 50,
+            w: 160,
+            h: 70,
+            text: 'text',
+            color: '#000',
+            fontSize: 16,
+            fontFamily: 'sans-serif',
+          },
+          {
+            id: 'connector_1',
+            type: 'connector' as const,
+            start: { kind: 'free' as const, x: 70, y: 200 },
+            end: { kind: 'free' as const, x: 360, y: 200 },
+            stroke: '#c44e1c',
+            width: 2,
+          },
+        ],
+      },
+    };
+
+    const onSelect = vi.fn();
+    const controller = createCanvasInteractionController({
+      project,
+      selectedId: null,
+      getActiveGroupId: () => null,
+      getTool: () => 'select',
+      isSpacePressed: () => false,
+      getConnectorPathMode: () => 'straight',
+      createRectNode: (point) => ({ id: 'draft_rect', type: 'rect', x: point.x, y: point.y, w: 0, h: 0, stroke: '#000' }),
+      createFreehandNode: (point) => ({ id: 'draft_line', type: 'freehand', points: [point], stroke: '#000', width: 2 }),
+      createTextNode: (point) => ({
+        id: 'draft_text',
+        type: 'text',
+        x: point.x,
+        y: point.y,
+        w: 100,
+        h: 50,
+        text: 'text',
+        color: '#000',
+        fontSize: 16,
+        fontFamily: 'sans-serif',
+      }),
+      createConnectorNode: createDraftConnector,
+      getNodeById,
+      upsertNode,
+      insertNodeIntoGroup: (nodes, _groupId, node) => [...nodes, node],
+      onSelect,
+      onReplaceProject: vi.fn(),
+      onCommitProject: vi.fn(),
+      onFinalizeMutation: vi.fn(),
+      render: vi.fn(),
+      requestAnimationFrame: (() => 1) as typeof window.requestAnimationFrame,
+      cancelAnimationFrame: (() => {}) as typeof window.cancelAnimationFrame,
+    });
+
+    controller.handlePointerDown({
+      screenPoint: { x: 10, y: 10 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    expect(controller.getState().pointerMode).toBe('marquee-selecting');
+
+    controller.handlePointerMove({
+      screenPoint: { x: 390, y: 130 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+
+    controller.handlePointerUp({
+      screenPoint: { x: 390, y: 130 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+
+    expect(onSelect).toHaveBeenLastCalledWith('node_text_1', {
+      append: false,
+      selectionIds: ['node_rect_1', 'node_text_1'],
+      primaryId: 'node_text_1',
+    });
+    controller.dispose();
+  });
+
+  it('limits marquee selection to the active group children', () => {
+    const base = createEmptyProject();
+    const project = {
+      ...base,
+      board: {
+        ...base.board,
+        nodes: [
+          {
+            id: 'group_1',
+            type: 'group' as const,
+            x: 80,
+            y: 60,
+            w: 320,
+            h: 220,
+            children: [
+              {
+                id: 'node_rect_child',
+                type: 'rect' as const,
+                x: 24,
+                y: 24,
+                w: 120,
+                h: 90,
+                stroke: '#000',
+              },
+              {
+                id: 'node_text_child',
+                type: 'text' as const,
+                x: 180,
+                y: 36,
+                w: 120,
+                h: 80,
+                text: 'inside',
+                color: '#000',
+                fontSize: 16,
+                fontFamily: 'sans-serif',
+              },
+            ],
+          },
+          {
+            id: 'node_rect_root',
+            type: 'rect' as const,
+            x: 90,
+            y: 70,
+            w: 260,
+            h: 180,
+            stroke: '#000',
+          },
+        ],
+      },
+    };
+
+    const onSelect = vi.fn();
+    const controller = createCanvasInteractionController({
+      project,
+      selectedId: null,
+      getActiveGroupId: () => 'group_1',
+      getTool: () => 'select',
+      isSpacePressed: () => false,
+      getConnectorPathMode: () => 'straight',
+      createRectNode: (point) => ({ id: 'draft_rect', type: 'rect', x: point.x, y: point.y, w: 0, h: 0, stroke: '#000' }),
+      createFreehandNode: (point) => ({ id: 'draft_line', type: 'freehand', points: [point], stroke: '#000', width: 2 }),
+      createTextNode: (point) => ({
+        id: 'draft_text',
+        type: 'text',
+        x: point.x,
+        y: point.y,
+        w: 100,
+        h: 50,
+        text: 'text',
+        color: '#000',
+        fontSize: 16,
+        fontFamily: 'sans-serif',
+      }),
+      createConnectorNode: createDraftConnector,
+      getNodeById,
+      upsertNode,
+      insertNodeIntoGroup: (nodes, _groupId, node) => [...nodes, node],
+      onSelect,
+      onReplaceProject: vi.fn(),
+      onCommitProject: vi.fn(),
+      onFinalizeMutation: vi.fn(),
+      render: vi.fn(),
+      requestAnimationFrame: (() => 1) as typeof window.requestAnimationFrame,
+      cancelAnimationFrame: (() => {}) as typeof window.cancelAnimationFrame,
+    });
+
+    controller.handlePointerDown({
+      screenPoint: { x: 90, y: 70 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    controller.handlePointerMove({
+      screenPoint: { x: 390, y: 190 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    controller.handlePointerUp({
+      screenPoint: { x: 390, y: 190 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+
+    expect(onSelect).toHaveBeenLastCalledWith('node_text_child', {
+      append: false,
+      selectionIds: ['node_rect_child', 'node_text_child'],
+      primaryId: 'node_text_child',
+    });
+    controller.dispose();
   });
 
   it('creates and reattaches connectors through the controller interaction state', () => {

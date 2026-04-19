@@ -610,10 +610,10 @@ test('groups can wrap content, enter editing context, and persist child geometry
   expect(group.children).toHaveLength(1);
   expect(group.children[0].id).toBe('node_rect_seed');
 
-  await page.mouse.click(box.x + 110, box.y + 90);
   await expect(page.getByRole('button', { name: '进入' })).toBeVisible();
   await page.getByRole('button', { name: '进入' }).click();
   await expect(page.getByText('正在编辑成组')).toBeVisible();
+  await page.waitForTimeout(250);
 
   await page.mouse.move(box.x + 110, box.y + 90);
   await page.mouse.down();
@@ -635,6 +635,71 @@ test('groups can wrap content, enter editing context, and persist child geometry
   expect(group).toBeTruthy();
   expect(group.children[0].id).toBe('node_rect_seed');
   expect(group.children[0].x).toBeGreaterThan(24);
+});
+
+test('can multi-select top-level nodes and group them in one action', async ({ page }) => {
+  await page.addInitScript(([storageKey, project]) => {
+    if (window.sessionStorage.getItem('__seeded_project__') === 'true') {
+      return;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(project));
+    window.sessionStorage.setItem('__seeded_project__', 'true');
+  }, [STORAGE_KEY, createEngineSeedProject()]);
+
+  await page.goto('/');
+
+  const canvas = page.locator('canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+
+  if (!box) {
+    return;
+  }
+
+  await page.getByRole('button', { name: '选择' }).click();
+  await page.mouse.click(box.x + 110, box.y + 90);
+  await page.keyboard.down('Shift');
+  await page.mouse.click(box.x + 450, box.y + 90);
+  await page.keyboard.up('Shift');
+
+  const groupSelectionButton = page.getByRole('button', { name: '成组', exact: true });
+  await expect(groupSelectionButton).toBeVisible();
+  await groupSelectionButton.click();
+  await page.waitForTimeout(250);
+
+  const project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  const group = project.board.nodes.find((node: { type: string }) => node.type === 'group');
+  expect(group).toBeTruthy();
+  expect(group.children).toHaveLength(2);
+  expect(group.children.map((child: { id: string }) => child.id)).toEqual(['node_rect_seed', 'node_text_seed']);
+});
+
+test('marquee selection can select multiple top-level nodes', async ({ page }) => {
+  await page.addInitScript(([storageKey, project]) => {
+    if (window.sessionStorage.getItem('__seeded_project__') === 'true') {
+      return;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(project));
+    window.sessionStorage.setItem('__seeded_project__', 'true');
+  }, [STORAGE_KEY, createEngineSeedProject()]);
+
+  await page.goto('/');
+
+  const canvas = page.locator('canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+
+  if (!box) {
+    return;
+  }
+
+  await page.getByRole('button', { name: '选择' }).click();
+  await page.mouse.move(box.x + 10, box.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 560, box.y + 150, { steps: 12 });
+  await page.mouse.up();
+
+  await expect(page.getByText('已选 3 项')).toBeVisible();
 });
 
 test('voice drafts stay editable until the user sends them from the sidebar composer', async ({ page }) => {

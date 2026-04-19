@@ -5,6 +5,7 @@ import { normalizeBounds } from './geometry';
 import { getNodeById, isGroupNode, resolveNodeToWorld } from './hierarchy';
 import { worldToScreen } from './transform';
 import type { BoardDoc, CanvasNode, ConnectorNode, GroupNode, FreehandNode, Point, RectNode } from './model';
+import type { SelectionBox } from './controller-state';
 import type { CanvasAssetRecord } from './canvas-registry';
 
 interface RenderOptions {
@@ -12,8 +13,10 @@ interface RenderOptions {
   board: BoardDoc;
   assets: CanvasAssetRecord[];
   selectedId: string | null;
+  selectedIds?: string[];
   hoveredId: string | null;
   activeGroupId: string | null;
+  selectionBox?: SelectionBox | null;
   draftRect: RectNode | null;
   draftFreehand: FreehandNode | null;
   draftConnector: ConnectorNode | null;
@@ -104,7 +107,6 @@ function drawActiveGroupOverlay(
   ctx.save();
   ctx.fillStyle = 'rgba(15, 23, 42, 0.08)';
   ctx.fillRect(0, 0, width, height);
-  ctx.clearRect(topLeft.x, topLeft.y, screenWidth, screenHeight);
   ctx.strokeStyle = 'rgba(196, 78, 28, 0.72)';
   ctx.lineWidth = 2;
   ctx.setLineDash([10, 6]);
@@ -112,7 +114,40 @@ function drawActiveGroupOverlay(
   ctx.restore();
 }
 
-export function renderScene({ canvas, board, assets, selectedId, hoveredId, activeGroupId, draftRect, draftFreehand, draftConnector }: RenderOptions): void {
+function drawSelectionBox(ctx: CanvasRenderingContext2D, board: BoardDoc, selectionBox: SelectionBox): void {
+  const bounds = normalizeBounds({
+    x: selectionBox.start.x,
+    y: selectionBox.start.y,
+    w: selectionBox.current.x - selectionBox.start.x,
+    h: selectionBox.current.y - selectionBox.start.y,
+  });
+  const topLeft = worldToScreen({ x: bounds.x, y: bounds.y }, board.viewport);
+  const screenWidth = bounds.w * board.viewport.scale;
+  const screenHeight = bounds.h * board.viewport.scale;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(37, 99, 235, 0.12)';
+  ctx.strokeStyle = 'rgba(37, 99, 235, 0.72)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 4]);
+  ctx.fillRect(topLeft.x, topLeft.y, screenWidth, screenHeight);
+  ctx.strokeRect(topLeft.x, topLeft.y, screenWidth, screenHeight);
+  ctx.restore();
+}
+
+export function renderScene({
+  canvas,
+  board,
+  assets,
+  selectedId,
+  selectedIds = selectedId ? [selectedId] : [],
+  hoveredId,
+  activeGroupId,
+  selectionBox,
+  draftRect,
+  draftFreehand,
+  draftConnector,
+}: RenderOptions): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) {
     return;
@@ -133,11 +168,29 @@ export function renderScene({ canvas, board, assets, selectedId, hoveredId, acti
   ctx.fillRect(0, 0, width, height);
 
   const rerender = () => {
-    renderScene({ canvas, board, assets, selectedId, hoveredId, activeGroupId, draftRect, draftFreehand, draftConnector });
+    renderScene({
+      canvas,
+      board,
+      assets,
+      selectedId,
+      selectedIds,
+      hoveredId,
+      activeGroupId,
+      selectionBox,
+      draftRect,
+      draftFreehand,
+      draftConnector,
+    });
   };
   const runtime = createCanvasRenderRuntime(assets);
+  const activeGroup = getNodeById(board.nodes, activeGroupId);
 
   for (const node of board.nodes) {
+    if (activeGroup && isGroupNode(activeGroup) && node.id === activeGroup.id) {
+      drawCanvasNode(ctx, node, { board, runtime, rerender });
+      continue;
+    }
+
     drawNodeTree(ctx, board, node, runtime, rerender);
   }
 
@@ -153,19 +206,27 @@ export function renderScene({ canvas, board, assets, selectedId, hoveredId, acti
     drawNodeTree(ctx, board, draftConnector, runtime, rerender);
   }
 
-  const activeGroup = getNodeById(board.nodes, activeGroupId);
   if (activeGroup && isGroupNode(activeGroup)) {
     drawActiveGroupOverlay(ctx, board, activeGroup, width, height);
+    for (const child of activeGroup.children) {
+      drawCanvasNode(ctx, child, { board, runtime, rerender });
+    }
   }
 
-  const hoveredNode = hoveredId && hoveredId !== selectedId ? getNodeById(board.nodes, hoveredId) : null;
+  if (selectionBox) {
+    drawSelectionBox(ctx, board, selectionBox);
+  }
+
+  const hoveredNode = hoveredId && !selectedIds.includes(hoveredId) ? getNodeById(board.nodes, hoveredId) : null;
   if (hoveredNode) {
     drawNodeChrome(ctx, hoveredNode, board, 'hovered');
   }
 
-  const selectedNode = getNodeById(board.nodes, selectedId);
-  if (selectedNode) {
-    drawNodeChrome(ctx, selectedNode, board, 'selected');
+  for (const id of selectedIds) {
+    const selectedNode = getNodeById(board.nodes, id);
+    if (selectedNode) {
+      drawNodeChrome(ctx, selectedNode, board, 'selected');
+    }
   }
 }
 

@@ -38,10 +38,14 @@ interface CanvasStageProps {
   tool: Tool;
   connectorPathMode: ConnectorPathMode;
   selectedId: string | null;
+  selectedIds: string[];
   activeGroupId: string | null;
   isSpacePressed: boolean;
   onInteractionActiveChange: (active: boolean) => void;
-  onSelect: (id: string | null) => void;
+  onSelect: (
+    id: string | null,
+    options?: { append?: boolean; toggle?: boolean; selectionIds?: string[]; primaryId?: string | null },
+  ) => void;
   onReplaceProject: (project: CanvasProject) => void;
   onCommitProject: (project: CanvasProject) => void;
   onFinalizeMutation: (beforeProject: CanvasProject, afterProject: CanvasProject) => void;
@@ -251,6 +255,7 @@ export function CanvasStage({
   tool,
   connectorPathMode,
   selectedId,
+  selectedIds,
   activeGroupId,
   isSpacePressed,
   onInteractionActiveChange,
@@ -264,6 +269,7 @@ export function CanvasStage({
   const controllerRef = useRef<CanvasInteractionController<CanvasProject> | null>(null);
   const initialProjectRef = useRef(project);
   const initialSelectedIdRef = useRef(selectedId);
+  const selectedIdsRef = useRef(selectedIds);
   const toolRef = useRef(tool);
   const isSpacePressedRef = useRef(isSpacePressed);
   const onSelectRef = useRef(onSelect);
@@ -285,8 +291,10 @@ export function CanvasStage({
         board: nextProject.board,
         assets: nextProject.assets,
         selectedId: selectedNodeId,
+        selectedIds: selectedIdsRef.current,
         hoveredId: state.hoveredNodeId,
         activeGroupId,
+        selectionBox: state.selectionBox,
         draftRect: state.draftRect,
         draftFreehand: state.draftFreehand,
         draftConnector: state.draftConnector,
@@ -309,6 +317,10 @@ export function CanvasStage({
     onCommitProjectRef.current = onCommitProject;
     onFinalizeMutationRef.current = onFinalizeMutation;
   }, [onCommitProject, onFinalizeMutation, onReplaceProject, onSelect]);
+
+  useEffect(() => {
+    selectedIdsRef.current = selectedIds;
+  }, [selectedIds]);
 
   useEffect(() => {
     const controller = createCanvasInteractionController({
@@ -368,7 +380,7 @@ export function CanvasStage({
       getNodeById,
       upsertNode,
       insertNodeIntoGroup,
-      onSelect: (id) => onSelectRef.current(id),
+      onSelect: (id, options) => onSelectRef.current(id, options),
       onReplaceProject: (nextProject) => onReplaceProjectRef.current(nextProject),
       onCommitProject: (nextProject) => onCommitProjectRef.current(nextProject),
       onFinalizeMutation: (beforeProject, afterProject) => onFinalizeMutationRef.current(beforeProject, afterProject),
@@ -390,8 +402,9 @@ export function CanvasStage({
   useEffect(() => {
     controllerRef.current?.syncProject(project);
     controllerRef.current?.syncSelectedId(selectedId);
+    controllerRef.current?.syncSelectedIds(selectedIds);
     controllerRef.current?.renderIfIdle();
-  }, [project, selectedId]);
+  }, [project, selectedId, selectedIds]);
 
   useEffect(() => {
     onInteractionActiveChange(isInteractionActive(interactionState));
@@ -451,6 +464,9 @@ export function CanvasStage({
       pointerId: event.pointerId,
       pointerType: event.pointerType,
       button: event.button,
+      shiftKey: event.shiftKey,
+      metaKey: event.metaKey,
+      ctrlKey: event.ctrlKey,
     });
   }, [getEventPoint]);
 
@@ -460,6 +476,9 @@ export function CanvasStage({
       pointerId: event.pointerId,
       pointerType: event.pointerType,
       button: event.button,
+      shiftKey: event.shiftKey,
+      metaKey: event.metaKey,
+      ctrlKey: event.ctrlKey,
     });
   }, [getEventPoint]);
 
@@ -469,6 +488,9 @@ export function CanvasStage({
       pointerId: event.pointerId,
       pointerType: event.pointerType,
       button: event.button,
+      shiftKey: event.shiftKey,
+      metaKey: event.metaKey,
+      ctrlKey: event.ctrlKey,
     });
   }, [getEventPoint]);
 

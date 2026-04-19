@@ -1,4 +1,4 @@
-import type { AnchorId, ConnectorNode, FreehandNode, RectNode } from './model';
+import type { AnchorId, ConnectorNode, FreehandNode, Point, RectNode } from './model';
 
 export type PointerMode =
   | 'idle'
@@ -10,6 +10,7 @@ export type PointerMode =
   | 'editing-connector-end'
   | 'editing-connector-waypoint'
   | 'resizing-node'
+  | 'marquee-selecting'
   | 'pinch';
 
 export interface DraftState {
@@ -35,6 +36,11 @@ export interface SnapGuide {
   kind: 'edge' | 'center';
 }
 
+export interface SelectionBox {
+  start: Point;
+  current: Point;
+}
+
 export interface CanvasInteractionState extends DraftState {
   pointerMode: PointerMode;
   isWheelInteractionActive: boolean;
@@ -42,6 +48,7 @@ export interface CanvasInteractionState extends DraftState {
   hoveredNodeId: string | null;
   hoveredAnchor: HoveredAnchor | null;
   activeConnectorHandle: ConnectorHandle | null;
+  selectionBox: SelectionBox | null;
 }
 
 export function createInitialInteractionState(): CanvasInteractionState {
@@ -55,6 +62,7 @@ export function createInitialInteractionState(): CanvasInteractionState {
     hoveredNodeId: null,
     hoveredAnchor: null,
     activeConnectorHandle: null,
+    selectionBox: null,
   };
 }
 
@@ -66,6 +74,7 @@ export function isActiveInteractionMode(mode: PointerMode): boolean {
       mode === 'editing-connector-end' ||
       mode === 'editing-connector-waypoint' ||
       mode === 'resizing-node' ||
+      mode === 'marquee-selecting' ||
       mode === 'pinch'
   );
 }

@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { createDeferredProjectSaver } from '../persistence/local';
 import {
   canExitActiveGroup,
-  createGroupNode,
   bringNodeForward,
   commitProject,
+  createGroupNode,
   dissolveGroupNode,
   finalizeMutation,
   getNodeParentGroupId,
@@ -15,8 +15,9 @@ import {
   sendNodeBackward,
   setActiveGroupId,
   setSelectedId,
+  setSelectedIds,
   undo,
-  wrapNodeInNewGroup,
+  wrapNodesInNewGroup,
 } from '../state/store';
 import { useCanvasKeyboardShortcuts } from './useCanvasKeyboardShortcuts';
 import type { CanvasProject, CanvasStoreState } from '../types/canvas';
@@ -37,6 +38,7 @@ export function useCanvasWorkspaceController({ state, setState }: UseCanvasWorks
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const latestProjectRef = useRef(state.project);
   const latestSelectedIdRef = useRef(state.selectedId);
+  const latestSelectedIdsRef = useRef(state.selectedIds);
   const deferredSaveRef = useRef(createDeferredProjectSaver());
 
   useEffect(() => {
@@ -46,6 +48,10 @@ export function useCanvasWorkspaceController({ state, setState }: UseCanvasWorks
   useEffect(() => {
     latestSelectedIdRef.current = state.selectedId;
   }, [state.selectedId]);
+
+  useEffect(() => {
+    latestSelectedIdsRef.current = state.selectedIds;
+  }, [state.selectedIds]);
 
   useEffect(() => {
     deferredSaveRef.current.schedule(state.project);
@@ -76,33 +82,65 @@ export function useCanvasWorkspaceController({ state, setState }: UseCanvasWorks
       setState((prev) => redo(prev));
     },
     onDeleteSelection: () => {
-      if (!latestSelectedIdRef.current) {
+      if (latestSelectedIdsRef.current.length === 0) {
         return;
       }
 
       setState((prev) => {
-        if (!prev.selectedId) {
+        if (prev.selectedIds.length === 0) {
           return prev;
         }
 
+        const nextNodes = prev.selectedIds.reduce(
+          (currentNodes, selectedId) => removeNodeById(currentNodes, selectedId),
+          prev.project.board.nodes,
+        );
         const nextProject: CanvasProject = {
           ...prev.project,
           board: {
             ...prev.project.board,
-            nodes: removeNodeById(prev.project.board.nodes, prev.selectedId),
+            nodes: nextNodes,
           },
         };
         const nextState = commitProject(prev, nextProject);
-        return setSelectedId(nextState, null);
+        return setSelectedIds(nextState, []);
       });
     },
     onExitGroup: () => {
-      setState((prev) => (prev.activeGroupId ? setActiveGroupId(setSelectedId(prev, null), null) : prev));
+      setState((prev) => (prev.activeGroupId ? setActiveGroupId(setSelectedIds(prev, []), null) : prev));
     },
   });
 
-  function handleSelect(id: string | null): void {
-    setState((prev) => setSelectedId(prev, id));
+  function handleSelect(
+    id: string | null,
+    options?: { append?: boolean; toggle?: boolean; selectionIds?: string[]; primaryId?: string | null },
+  ): void {
+    setState((prev) => {
+      if (options?.selectionIds) {
+        const nextIds = options.append ? [...new Set([...prev.selectedIds, ...options.selectionIds])] : options.selectionIds;
+        return setSelectedIds(prev, nextIds, options.primaryId ?? id ?? nextIds[nextIds.length - 1] ?? null);
+      }
+
+      if (!options?.append) {
+        return setSelectedId(prev, id);
+      }
+
+      if (!id) {
+        return prev;
+      }
+
+      const alreadySelected = prev.selectedIds.includes(id);
+      if (alreadySelected && options.toggle) {
+        const remainingIds = prev.selectedIds.filter((selectedId) => selectedId !== id);
+        return setSelectedIds(prev, remainingIds, remainingIds[remainingIds.length - 1] ?? null);
+      }
+
+      if (alreadySelected) {
+        return setSelectedIds(prev, prev.selectedIds, id);
+      }
+
+      return setSelectedIds(prev, [...prev.selectedIds, id], id);
+    });
   }
 
   function handleEnterGroup(id: string | null): void {
@@ -110,11 +148,11 @@ export function useCanvasWorkspaceController({ state, setState }: UseCanvasWorks
       return;
     }
 
-    setState((prev) => setActiveGroupId(setSelectedId(prev, null), id));
+    setState((prev) => setActiveGroupId(setSelectedIds(prev, [], null), id));
   }
 
   function handleExitGroup(): void {
-    setState((prev) => (prev.activeGroupId ? setActiveGroupId(setSelectedId(prev, null), null) : prev));
+    setState((prev) => (prev.activeGroupId ? setActiveGroupId(setSelectedIds(prev, [], null), null) : prev));
   }
 
   function handleCommitProject(project: CanvasProject): void {
@@ -130,7 +168,7 @@ export function useCanvasWorkspaceController({ state, setState }: UseCanvasWorks
   }
 
   function nudgeLayer(direction: 'forward' | 'backward'): void {
-    if (!state.selectedId) {
+    if (!state.selectedId || state.selectedIds.length !== 1) {
       return;
     }
 
@@ -166,16 +204,22 @@ export function useCanvasWorkspaceController({ state, setState }: UseCanvasWorks
   }
 
   function groupSelection(): void {
-    if (!state.selectedId) {
+    const selectionIds = state.selectedIds.length > 0 ? state.selectedIds : (state.selectedId ? [state.selectedId] : []);
+    if (selectionIds.length === 0) {
       return;
     }
 
     setState((prev) => {
-      const nextNodes = wrapNodeInNewGroup(prev.project.board.nodes, prev.selectedId!);
+      const nextNodes = wrapNodesInNewGroup(prev.project.board.nodes, selectionIds);
       if (nextNodes === prev.project.board.nodes) {
         return prev;
       }
-      const group = nextNodes[nextNodes.length - 1];
+      const group = nextNodes.find(
+        (node) => node.type === 'group' && selectionIds.every((selectedId) => node.children.some((child) => child.id === selectedId)),
+      );
+      if (!group || group.type !== 'group') {
+        return prev;
+      }
       const nextProject: CanvasProject = {
         ...prev.project,
         board: {
@@ -225,7 +269,7 @@ export function useCanvasWorkspaceController({ state, setState }: UseCanvasWorks
           nodes: nextNodes,
         },
       };
-      return setActiveGroupId(setSelectedId(commitProject(prev, nextProject), null), null);
+      return setActiveGroupId(setSelectedIds(commitProject(prev, nextProject), [], null), null);
     });
   }
 

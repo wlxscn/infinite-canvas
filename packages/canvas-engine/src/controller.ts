@@ -1,4 +1,5 @@
 import {
+  getCanvasNodeBounds,
   clampScale,
   findAnchorTarget,
   getAllDescendantNodes,
@@ -9,6 +10,7 @@ import {
   hitCanvasNodeResizeHandle,
   isConnectorNode,
   maybeAppendPoint,
+  normalizeBounds,
   pickTopCanvasNode,
   resizeCanvasNode,
   resolveConnectorEndpoint,
@@ -66,6 +68,16 @@ export interface CanvasControllerPointerInput {
   pointerId: number;
   pointerType: string;
   button?: number;
+  shiftKey?: boolean;
+  metaKey?: boolean;
+  ctrlKey?: boolean;
+}
+
+export interface SelectOptions {
+  append?: boolean;
+  toggle?: boolean;
+  selectionIds?: string[];
+  primaryId?: string | null;
 }
 
 export interface CanvasControllerOptions<TProject extends CanvasProjectLike> {
@@ -82,7 +94,7 @@ export interface CanvasControllerOptions<TProject extends CanvasProjectLike> {
   getNodeById: (nodes: CanvasNode[], id: string | null) => CanvasNode | null;
   upsertNode: (nodes: CanvasNode[], node: CanvasNode) => CanvasNode[];
   insertNodeIntoGroup?: (nodes: CanvasNode[], groupId: string, node: CanvasNode) => CanvasNode[];
-  onSelect: (id: string | null) => void;
+  onSelect: (id: string | null, options?: SelectOptions) => void;
   onReplaceProject: (project: TProject) => void;
   onCommitProject: (project: TProject) => void;
   onFinalizeMutation: (beforeProject: TProject, afterProject: TProject) => void;
@@ -98,6 +110,7 @@ export interface CanvasInteractionController<TProject extends CanvasProjectLike>
   getState: () => CanvasInteractionState;
   syncProject: (project: TProject) => void;
   syncSelectedId: (selectedId: string | null) => void;
+  syncSelectedIds: (selectedIds: string[]) => void;
   renderIfIdle: () => void;
   renderCurrent: () => void;
   handleResize: () => void;
@@ -156,6 +169,23 @@ function findConnectorHandleTarget(
   return null;
 }
 
+function mergeSelectionIds(currentIds: string[], nextIds: string[]): string[] {
+  return [...new Set([...currentIds, ...nextIds])];
+}
+
+function getSelectionBounds(start: Point, current: Point) {
+  return normalizeBounds({
+    x: start.x,
+    y: start.y,
+    w: current.x - start.x,
+    h: current.y - start.y,
+  });
+}
+
+function intersectsBounds(a: ReturnType<typeof normalizeBounds>, b: ReturnType<typeof normalizeBounds>): boolean {
+  return a.x <= b.x + b.w && a.x + a.w >= b.x && a.y <= b.y + b.h && a.y + a.h >= b.y;
+}
+
 export function createCanvasInteractionController<TProject extends CanvasProjectLike>(
   options: CanvasControllerOptions<TProject>,
 ): CanvasInteractionController<TProject> {
@@ -168,6 +198,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
   let projectRef = options.project;
   let boardRef = options.project.board;
   let selectedIdRef = options.selectedId;
+  let selectedIdsRef = options.selectedId ? [options.selectedId] : [];
   let animationFrameId: number | null = null;
   let pendingReplaceProject: TProject | null = null;
   let wheelCommitTimeoutId: ReturnType<typeof window.setTimeout> | null = null;
@@ -213,8 +244,21 @@ export function createCanvasInteractionController<TProject extends CanvasProject
     };
   }
 
-  function selectNode(id: string | null): void {
+  function selectNode(id: string | null, selectOptions?: SelectOptions): void {
+    if (selectOptions?.selectionIds) {
+      selectedIdRef = selectOptions.primaryId ?? selectOptions.selectionIds[0] ?? null;
+      selectedIdsRef = selectOptions.selectionIds;
+      options.onSelect(selectedIdRef, selectOptions);
+      return;
+    }
+
     selectedIdRef = id;
+    selectedIdsRef = id ? [id] : [];
+    if (selectOptions) {
+      options.onSelect(id, selectOptions);
+      return;
+    }
+
     options.onSelect(id);
   }
 
@@ -296,6 +340,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       hoveredNodeId: null,
       hoveredAnchor: null,
       activeConnectorHandle: null,
+      selectionBox: null,
     });
   }
 
@@ -343,6 +388,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       hoveredNodeId: null,
       hoveredAnchor: null,
       activeConnectorHandle: null,
+      selectionBox: null,
     });
   }
 
@@ -403,6 +449,10 @@ export function createCanvasInteractionController<TProject extends CanvasProject
     },
     syncSelectedId(selectedId) {
       selectedIdRef = selectedId;
+      selectedIdsRef = selectedId ? [selectedId] : [];
+    },
+    syncSelectedIds(selectedIds) {
+      selectedIdsRef = selectedIds;
     },
     renderIfIdle() {
       if (isActiveInteractionMode(state.pointerMode) || state.isWheelInteractionActive) {
@@ -440,8 +490,17 @@ export function createCanvasInteractionController<TProject extends CanvasProject
 
       const tolerance = scaleTolerance(6, currentBoard.viewport.scale);
       const contextNodes = getNodesInContext(currentBoard, getActiveGroupId());
+      const isAdditiveSelection = !!(input.shiftKey || input.metaKey || input.ctrlKey);
 
       if (options.getTool() === 'select') {
+        if (isAdditiveSelection) {
+          const pickedId = pickTopCanvasNode(contextNodes, worldPoint, tolerance, currentBoard);
+          if (pickedId) {
+            selectNode(pickedId, { append: true, toggle: true });
+            return;
+          }
+        }
+
         const selectedNode = options.getNodeById(currentBoard.nodes, selectedIdRef);
         if (selectedNode && isConnectorNode(selectedNode)) {
           const connectorHandle = hitConnectorHandle(selectedNode, worldPoint, currentBoard.viewport.scale, currentBoard);
@@ -509,7 +568,19 @@ export function createCanvasInteractionController<TProject extends CanvasProject
 
         if (pickedId && pickedNode && !isConnectorNode(pickedNode)) {
           startNodeInteraction('dragging-node', pickedId, worldPoint);
+          return;
         }
+
+        startScreen = input.screenPoint;
+        updateState({
+          pointerMode: 'marquee-selecting',
+          selectionBox: {
+            start: worldPoint,
+            current: worldPoint,
+          },
+          hoveredNodeId: null,
+          hoveredAnchor: null,
+        });
         return;
       }
 
@@ -521,6 +592,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
           draftRect: options.createRectNode(localPoint),
           hoveredNodeId: null,
           hoveredAnchor: null,
+          selectionBox: null,
         });
         return;
       }
@@ -533,6 +605,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
           draftFreehand: options.createFreehandNode(localPoint),
           hoveredNodeId: null,
           hoveredAnchor: null,
+          selectionBox: null,
         });
         return;
       }
@@ -558,6 +631,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
         updateState({
           hoveredNodeId: null,
           hoveredAnchor: anchor ? { nodeId: anchor.nodeId, anchor: anchor.anchor } : null,
+          selectionBox: null,
         });
         if (!anchor) {
           return;
@@ -569,6 +643,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
           hoveredNodeId: null,
           hoveredAnchor: { nodeId: anchor.nodeId, anchor: anchor.anchor },
           activeConnectorHandle: { kind: 'endpoint', endpoint: 'end' },
+          selectionBox: null,
         });
       }
     },
@@ -656,6 +731,17 @@ export function createCanvasInteractionController<TProject extends CanvasProject
 
       if (state.hoveredNodeId) {
         updateState({ hoveredNodeId: null });
+      }
+
+      if (state.pointerMode === 'marquee-selecting' && state.selectionBox) {
+        updateState({
+          selectionBox: {
+            ...state.selectionBox,
+            current: worldPoint,
+          },
+        });
+        renderCurrent();
+        return;
       }
 
       if (state.pointerMode === 'panning' && startScreen) {
@@ -864,6 +950,21 @@ export function createCanvasInteractionController<TProject extends CanvasProject
 
       if (state.pointerMode === 'panning' || state.pointerMode === 'pinch') {
         flushScheduledReplace();
+      }
+
+      if (state.pointerMode === 'marquee-selecting' && state.selectionBox) {
+        const contextNodes = getNodesInContext(currentBoard, getActiveGroupId()).filter((node) => !isConnectorNode(node));
+        const selectionBounds = getSelectionBounds(state.selectionBox.start, state.selectionBox.current);
+        const matchedIds = contextNodes
+          .filter((node) => intersectsBounds(normalizeBounds(getCanvasNodeBounds(node, currentBoard)), selectionBounds))
+          .map((node) => node.id);
+        const isAdditiveSelection = !!(input.shiftKey || input.metaKey || input.ctrlKey);
+        const selectionIds = isAdditiveSelection ? mergeSelectionIds(selectedIdsRef, matchedIds) : matchedIds;
+        selectNode(selectionIds[0] ?? null, {
+          append: isAdditiveSelection,
+          selectionIds,
+          primaryId: selectionIds[selectionIds.length - 1] ?? selectionIds[0] ?? null,
+        });
       }
 
       if (state.pointerMode === 'drawing-connector' && state.draftConnector) {
