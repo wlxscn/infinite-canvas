@@ -7,10 +7,11 @@ function logChat(event, payload = {}) {
   console.log(`[agent-api/chat] ${event}`, payload);
 }
 
-export function createChatController() {
-  const openAiService = createOpenAiService();
-  const conversationService = createConversationService();
-  const toolRunnerService = createToolRunnerService();
+export function createChatController({
+  openAiService = createOpenAiService(),
+  conversationService = createConversationService(),
+  toolRunnerService = createToolRunnerService(),
+} = {}) {
 
   return async function chatController(request, response) {
     const startedAt = Date.now();
@@ -37,6 +38,7 @@ export function createChatController() {
       requestId,
       conversationId: conversationState.conversationId,
       previousResponseId: conversationState.previousResponseId,
+      responseId: conversationState.responseId,
     });
     const textId = `assistant-text-${requestId}`;
 

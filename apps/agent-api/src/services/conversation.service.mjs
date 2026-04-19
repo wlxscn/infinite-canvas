@@ -1,11 +1,18 @@
 import { randomUUID } from 'node:crypto';
 
-export function createConversationService() {
+export function createConversationService({ createId = randomUUID } = {}) {
   return {
     prepare(body) {
+      const conversationId = body?.conversationId ?? createId();
+      const previousResponseId = typeof body?.previousResponseId === 'string' ? body.previousResponseId : null;
+
       return {
-        conversationId: body?.conversationId ?? randomUUID(),
-        previousResponseId: body?.previousResponseId ?? randomUUID(),
+        conversationId,
+        previousResponseId,
+        responseId: createId(),
+        providerState: {
+          previousResponseId,
+        },
       };
     },
   };

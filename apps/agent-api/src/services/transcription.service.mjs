@@ -1,5 +1,6 @@
 import { basename, extname } from 'node:path';
 import { getEnv } from '../config/env.mjs';
+import { createLlmGateway, LlmGatewayError } from './llm-gateway/index.mjs';
 
 const SUPPORTED_AUDIO_TYPES = new Set([
   'audio/m4a',
@@ -73,63 +74,28 @@ export function validateAudioUpload(file, { maxBytes } = {}) {
 
 export function createTranscriptionService({
   env = getEnv(),
-  fetchImpl = globalThis.fetch,
+  llmGateway = createLlmGateway({ env }),
 } = {}) {
   return {
     async transcribeAudio({ audioBuffer, mimeType, fileName, language }) {
-      if (!env.openAiApiKey) {
-        throw new TranscriptionError(500, 'missing_provider_config', 'OPENAI_API_KEY is not configured');
-      }
-
-      const upstreamBody = new FormData();
-      upstreamBody.set('model', env.openAiTranscriptionModel);
-      upstreamBody.set('file', new File([audioBuffer], fileName, { type: mimeType }));
-
-      if (typeof language === 'string' && language.trim()) {
-        upstreamBody.set('language', language.trim());
-      }
-
-      let upstreamResponse;
       try {
-        upstreamResponse = await fetchImpl(`${env.openAiBaseUrl}/audio/transcriptions`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${env.openAiApiKey}`,
-          },
-          body: upstreamBody,
-          signal: AbortSignal.timeout(env.transcriptionTimeoutMs),
+        const result = await llmGateway.transcribe({
+          audioBuffer,
+          mimeType,
+          fileName,
+          language,
         });
+
+        return {
+          text: result.text,
+        };
       } catch (error) {
-        throw new TranscriptionError(502, 'transcription_failed', `Transcription provider request failed: ${error.message}`);
-      }
-
-      if (!upstreamResponse.ok) {
-        let detail = '';
-
-        try {
-          const upstreamError = await upstreamResponse.json();
-          detail = upstreamError?.error?.message ?? upstreamError?.message ?? '';
-        } catch {
-          detail = await upstreamResponse.text();
+        if (error instanceof LlmGatewayError) {
+          throw new TranscriptionError(error.statusCode, error.code, error.message);
         }
 
-        const suffix = detail ? `: ${detail}` : '';
-        throw new TranscriptionError(502, 'transcription_failed', `Transcription provider returned ${upstreamResponse.status}${suffix}`);
+        throw new TranscriptionError(502, 'transcription_failed', `Transcription provider request failed: ${error.message}`);
       }
-
-      let payload;
-      try {
-        payload = await upstreamResponse.json();
-      } catch {
-        throw new TranscriptionError(502, 'invalid_transcription_response', 'Transcription provider returned invalid JSON');
-      }
-
-      const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
-      if (!text) {
-        throw new TranscriptionError(502, 'invalid_transcription_response', 'Transcription provider returned no text');
-      }
-
-      return { text };
     },
   };
 }

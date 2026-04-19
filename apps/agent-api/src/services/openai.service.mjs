@@ -1,6 +1,5 @@
-import { randomUUID } from 'node:crypto';
 import { designAgentPrompt } from '../prompts/design-agent.prompt.mjs';
-import { createMiniMaxService } from './minimax.service.mjs';
+import { createLlmGateway, LLM_STREAM_EVENT_TYPES } from './llm-gateway/index.mjs';
 import { AGENT_EFFECT_TYPES } from '../../../../packages/shared/src/runtime.mjs';
 
 function summarizeCanvasContext(canvasContext) {
@@ -72,29 +71,36 @@ Write the assistant reply in Chinese.`,
   };
 }
 
-async function decideTool({ minimaxService, toolRunnerService, message, canvasContext }) {
+async function decideTool({ llmGateway, toolRunnerService, message, canvasContext }) {
   const prompt = buildToolDecisionPrompt({ message, canvasContext });
-  const modelToolMessage = await minimaxService.createMessage({
-    messages: [
-      { role: 'system', content: prompt.system },
-      { role: 'user', content: prompt.user },
-    ],
-    tools: toolRunnerService.listTools(),
-    temperature: 0.1,
-  });
 
-  const toolCall = modelToolMessage?.tool_calls?.[0];
-  if (!toolCall) {
+  try {
+    const result = await llmGateway.callTools({
+      messages: [
+        { role: 'system', content: prompt.system },
+        { role: 'user', content: prompt.user },
+      ],
+      tools: toolRunnerService.listTools(),
+      temperature: 0.1,
+    });
+
     return {
-      modelToolMessage: null,
+      toolCall: result.toolCalls?.[0] ?? null,
+      providerState: {
+        provider: result.provider,
+        responseId: result.providerResponseId ?? null,
+      },
+    };
+  } catch (error) {
+    console.warn('[agent-api/orchestrator] tool decision failed, falling back to local preview', {
+      message: error instanceof Error ? error.message : String(error),
+    });
+
+    return {
       toolCall: null,
+      providerState: null,
     };
   }
-
-  return {
-    modelToolMessage,
-    toolCall,
-  };
 }
 
 async function runTool({ toolRunnerService, message, canvasContext, toolCall }) {
@@ -106,8 +112,8 @@ async function runTool({ toolRunnerService, message, canvasContext, toolCall }) 
 
   return {
     plan: await toolRunnerService.executeToolCall({
-      name: toolCall.function?.name,
-      rawArguments: toolCall.function?.arguments,
+      name: toolCall.name,
+      rawArguments: toolCall.rawArguments,
       message,
       canvasContext,
     }),
@@ -127,8 +133,7 @@ function splitDeferredEffects(effects = []) {
   };
 }
 
-export function createOpenAiService() {
-  const minimaxService = createMiniMaxService();
+export function createOpenAiService({ llmGateway = createLlmGateway() } = {}) {
 
   return {
     async prepareResponse({ request, conversationState, toolRunnerService }) {
@@ -137,8 +142,8 @@ export function createOpenAiService() {
         request?.messages?.[request.messages.length - 1]?.parts?.find((part) => part.type === 'text')?.text ??
         '';
       const canvasContext = request?.canvasContext ?? null;
-      const { toolCall } = await decideTool({
-        minimaxService,
+      const { toolCall, providerState } = await decideTool({
+        llmGateway,
         toolRunnerService,
         message,
         canvasContext,
@@ -155,7 +160,8 @@ export function createOpenAiService() {
         message,
         canvasContext,
         conversationId: conversationState.conversationId,
-        previousResponseId: randomUUID(),
+        previousResponseId: conversationState.responseId,
+        providerState: providerState ?? conversationState.providerState,
         prompt: buildFinalAnswerPrompt({
           message,
           canvasContext,
@@ -173,12 +179,21 @@ export function createOpenAiService() {
       };
     },
     async streamPreparedResponse({ prepared, onTextDelta }) {
-      return minimaxService.streamText({
-        ...prepared.prompt,
+      const result = await llmGateway.stream({
+        messages: [
+          { role: 'system', content: prepared.prompt.system },
+          { role: 'user', content: prepared.prompt.user },
+        ],
         fallbackText: prepared.fallbackText,
         temperature: 1,
-        onTextDelta,
+        onEvent(event) {
+          if (event.type === LLM_STREAM_EVENT_TYPES.TEXT_DELTA) {
+            onTextDelta?.(event.text);
+          }
+        },
       });
+
+      return result.text;
     },
     async respond({ request, conversationState, toolRunnerService }) {
       const prepared = await this.prepareResponse({

@@ -1,12 +1,29 @@
 export function getEnv() {
   return {
     port: Number.parseInt(process.env.PORT ?? '8787', 10),
+    llmDefaultTextProvider: process.env.LLM_DEFAULT_TEXT_PROVIDER ?? 'minimax',
+    llmDefaultStreamProvider: process.env.LLM_DEFAULT_STREAM_PROVIDER ?? 'minimax',
+    llmDefaultToolProvider: process.env.LLM_DEFAULT_TOOL_PROVIDER ?? 'minimax',
+    llmDefaultTranscriptionProvider: process.env.LLM_DEFAULT_TRANSCRIPTION_PROVIDER ?? 'openai',
     openAiApiKey: process.env.OPENAI_API_KEY ?? '',
     openAiBaseUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
+    openAiModel: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
     openAiTranscriptionModel: process.env.OPENAI_TRANSCRIPTION_MODEL ?? 'gpt-4o-mini-transcribe',
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? '',
+    anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com/v1',
+    anthropicModel: process.env.ANTHROPIC_MODEL ?? 'claude-3-5-sonnet-latest',
+    geminiApiKey: process.env.GEMINI_API_KEY ?? '',
+    geminiBaseUrl: process.env.GEMINI_BASE_URL ?? 'https://generativelanguage.googleapis.com/v1beta',
+    geminiModel: process.env.GEMINI_MODEL ?? 'gemini-2.0-flash',
+    glmApiKey: process.env.GLM_API_KEY ?? '',
+    glmBaseUrl: process.env.GLM_BASE_URL ?? 'https://open.bigmodel.cn/api/paas/v4',
+    glmModel: process.env.GLM_MODEL ?? 'glm-4.5',
+    kimiApiKey: process.env.KIMI_API_KEY ?? '',
+    kimiBaseUrl: process.env.KIMI_BASE_URL ?? 'https://api.moonshot.cn/v1',
+    kimiModel: process.env.KIMI_MODEL ?? 'moonshot-v1-8k',
     transcriptionMaxBytes: Number.parseInt(process.env.TRANSCRIPTION_MAX_BYTES ?? `${10 * 1024 * 1024}`, 10),
     transcriptionTimeoutMs: Number.parseInt(process.env.TRANSCRIPTION_TIMEOUT_MS ?? '30000', 10),
-    minimaxApiKey: process.env.MINIMAX_API_KEY ?? 'sk-api-5qdyUMdGTwsgP5x5xvmGbfIHKZ-NRxesPuXDIqhE5xFI-9sW9hq_wPXt8Lu0zqL6WiBwdZQPgmylYaEJfw6TfAfIPZqpTtktcNXih7octgIDXfMKJEwdgTQ',
+    minimaxApiKey: process.env.MINIMAX_API_KEY ?? '',
     minimaxBaseUrl: process.env.MINIMAX_BASE_URL ?? 'https://api.minimaxi.com/v1',
     minimaxModel: process.env.MINIMAX_MODEL ?? 'MiniMax-M2.7',
     minimaxImageBaseUrl: process.env.MINIMAX_IMAGE_BASE_URL ?? 'https://api.minimaxi.com/v1',
@@ -36,6 +53,22 @@ export function validateEnv() {
 
   if (!Number.isFinite(env.transcriptionTimeoutMs) || env.transcriptionTimeoutMs <= 0) {
     throw new Error('TRANSCRIPTION_TIMEOUT_MS must be a positive integer.');
+  }
+
+  if (!env.llmDefaultTextProvider) {
+    throw new Error('LLM_DEFAULT_TEXT_PROVIDER must be configured.');
+  }
+
+  if (!env.llmDefaultStreamProvider) {
+    throw new Error('LLM_DEFAULT_STREAM_PROVIDER must be configured.');
+  }
+
+  if (!env.llmDefaultToolProvider) {
+    throw new Error('LLM_DEFAULT_TOOL_PROVIDER must be configured.');
+  }
+
+  if (!env.llmDefaultTranscriptionProvider) {
+    throw new Error('LLM_DEFAULT_TRANSCRIPTION_PROVIDER must be configured.');
   }
 
   if (env.corsOrigins.length === 0) {
