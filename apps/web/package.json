@@ -12,11 +12,13 @@
     "test:e2e": "node scripts/run-e2e.mjs"
   },
   "dependencies": {
-    "@infinite-canvas/canvas-engine": "workspace:*",
     "@ai-sdk/react": "^3.0.160",
+    "@infinite-canvas/canvas-engine": "workspace:*",
     "ai": "^6.0.158",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {

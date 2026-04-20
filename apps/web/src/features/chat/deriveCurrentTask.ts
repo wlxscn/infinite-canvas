@@ -54,8 +54,18 @@ function getLatestMessageByRole(session: ChatSession, role: ChatMessage['role'])
 }
 
 function getLatestEffect(responseData: AgentResponseData | null): AgentEffect | null {
-  const latestEffect = responseData?.effects.findLast((effect) => effect.type !== 'noop');
-  return latestEffect ?? null;
+  if (!responseData?.effects.length) {
+    return null;
+  }
+
+  for (let index = responseData.effects.length - 1; index >= 0; index -= 1) {
+    const effect = responseData.effects[index];
+    if (effect.type !== 'noop') {
+      return effect;
+    }
+  }
+
+  return null;
 }
 
 function deriveIntent(latestEffect: AgentEffect | null): DerivedTaskIntent {
@@ -203,6 +213,24 @@ function getStatusLabel(status: DerivedTaskStatus, matchingJob: GenerationJob | 
   }
 }
 
+function formatTaskError(chatError: Error | null, matchingJob: GenerationJob | null): string {
+  const rawMessage = chatError?.message ?? matchingJob?.error ?? '';
+
+  if (!rawMessage) {
+    return '任务执行失败，可以继续补充指令修正方向。';
+  }
+
+  if (/failed to fetch/i.test(rawMessage)) {
+    return '连接设计助手失败，请检查本地 agent 服务是否已启动。';
+  }
+
+  if (/network|timeout|timed out/i.test(rawMessage)) {
+    return '请求超时或网络异常，可以稍后重试或继续补充指令。';
+  }
+
+  return rawMessage;
+}
+
 function buildSummary({
   intent,
   status,
@@ -217,7 +245,7 @@ function buildSummary({
   chatError: Error | null;
 }): string {
   if (status === 'failed') {
-    return chatError?.message ?? matchingJob?.error ?? '任务执行失败，可以继续补充指令修正方向。';
+    return formatTaskError(chatError, matchingJob);
   }
 
   if (status === 'generating' && matchingJob?.prompt) {
@@ -276,22 +304,32 @@ function buildTimeline({
         : 'pending';
 
   if (intent === 'chat') {
+    const replyLabel =
+      status === 'failed' ? '回答生成失败' : status === 'responding' ? '正在生成回答' : '已生成回答';
+
     return [
       { id: 'received', label: '已接收任务', status: receivedStatus },
       {
         id: 'reply',
-        label: status === 'responding' ? '正在生成回答' : '已生成回答',
-        status: status === 'responding' ? 'current' : latestAssistantMessage ? 'done' : 'pending',
+        label: replyLabel,
+        status:
+          status === 'failed'
+            ? 'failed'
+            : status === 'responding'
+              ? 'current'
+              : latestAssistantMessage
+                ? 'done'
+                : 'pending',
       },
       {
         id: 'chat-only',
         label: '本轮仅对话，不修改画布',
-        status: status === 'failed' ? 'failed' : latestAssistantMessage ? 'done' : status === 'responding' ? 'current' : 'pending',
+        status: latestAssistantMessage ? 'done' : status === 'responding' ? 'current' : 'pending',
       },
       {
         id: 'continue',
-        label: status === 'failed' ? '等待补充指令' : '可继续追问或下达下一步指令',
-        status: status === 'failed' ? 'failed' : latestAssistantMessage ? 'done' : 'pending',
+        label: status === 'failed' ? '可重试或补充指令' : '可继续追问或下达下一步指令',
+        status: status === 'failed' ? 'current' : latestAssistantMessage ? 'done' : 'pending',
       },
     ];
   }

@@ -42,14 +42,6 @@ function App() {
   const chatThreadRef = useRef<HTMLDivElement | null>(null);
   const canvasStageWrapRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!chatThreadRef.current) {
-      return;
-    }
-
-    chatThreadRef.current.scrollTop = chatThreadRef.current.scrollHeight;
-  }, [state.project.chat.activeSessionId, state.project.chat.sessions]);
-
   usePreventBrowserZoom();
 
   const selectedNode = useMemo(() => getSelectedNode(state), [state]);
@@ -98,6 +90,7 @@ function App() {
     chatInput,
     setChatInput,
     currentTask,
+    streamingAssistantMessage,
     sessionCount,
     sessionHistory,
     voiceComposer,
@@ -114,6 +107,14 @@ function App() {
     onApplyEffects: applyAgentEffects,
     buildCanvasContext,
   });
+
+  useEffect(() => {
+    if (!chatThreadRef.current) {
+      return;
+    }
+
+    chatThreadRef.current.scrollTop = chatThreadRef.current.scrollHeight;
+  }, [state.project.chat.activeSessionId, state.project.chat.sessions, streamingAssistantMessage?.text]);
 
   return (
     <div className="app-shell">
@@ -223,6 +224,7 @@ function App() {
               activeSessionId={state.project.chat.activeSessionId}
               activeSession={activeSession}
               currentTask={currentTask}
+              streamingAssistantMessage={streamingAssistantMessage}
               chatInput={chatInput}
               composerStatusText={composerStatusText}
               voiceButtonLabel={voiceButtonLabel}

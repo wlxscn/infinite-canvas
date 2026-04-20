@@ -88,6 +88,20 @@ export function useAgentChat({ initialMessages, onResponseData, onAssistantFinis
     },
   });
 
+  const streamingAssistantMessage = useMemo(() => {
+    const latestMessage = [...chat.messages].reverse().find((message) => message.role === 'assistant');
+    if (!latestMessage) {
+      return null;
+    }
+
+    const localMessage = toLocalChatMessage(latestMessage);
+    if (!localMessage.text.trim()) {
+      return null;
+    }
+
+    return localMessage;
+  }, [chat.messages]);
+
   async function sendAgentMessage(message: string, request: AgentChatRequest, targetSessionId: string | null) {
     pendingTargetSessionIdRef.current = targetSessionId;
     logChat('transport:send', {
@@ -112,6 +126,8 @@ export function useAgentChat({ initialMessages, onResponseData, onAssistantFinis
 
   return {
     sendAgentMessage,
+    messages: chat.messages,
+    streamingAssistantMessage,
     status: chat.status,
     error: chat.error,
   };

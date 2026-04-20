@@ -154,7 +154,7 @@ export function useChatSidebarController({
         responseData: activeSession ? latestResponseDataBySession[activeSession.id] ?? null : null,
         jobs: project.jobs,
         chatStatus: agentChat.status,
-        chatError: agentChat.error,
+        chatError: agentChat.error ?? null,
       }),
     [activeSession, agentChat.error, agentChat.status, latestResponseDataBySession, project.jobs],
   );
@@ -287,6 +287,7 @@ export function useChatSidebarController({
     chatInput,
     setChatInput,
     currentTask,
+    streamingAssistantMessage: agentChat.streamingAssistantMessage,
     sessionCount: project.chat.sessions.length,
     sessionHistory,
     voiceComposer,
