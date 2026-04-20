@@ -7,6 +7,8 @@ import type { AgentEffect } from '@infinite-canvas/shared/tool-effects';
 import { useAgentChat } from './useAgentChat';
 import { mergeTranscriptIntoDraft, useVoiceComposer } from './useVoiceComposer';
 import { appendMessagesToSession, createChatSession, getActiveChatSession, updateActiveSession, updateSessionById } from '../session-state';
+import { deriveCurrentTask, deriveSessionHistoryEntries } from '../deriveCurrentTask';
+import type { AgentResponseData } from '../mappers/chat-mapper';
 import { replaceProjectNoHistory } from '../../../state/store';
 import type { CanvasNode, CanvasProject, CanvasStoreState, ChatSession } from '../../../types/canvas';
 import { createId } from '../../../utils/id';
@@ -41,6 +43,7 @@ export function useChatSidebarController({
   buildCanvasContext,
 }: UseChatSidebarControllerOptions) {
   const [chatInput, setChatInput] = useState('');
+  const [latestResponseDataBySession, setLatestResponseDataBySession] = useState<Record<string, AgentResponseData | null>>({});
   const activeSession = useMemo(() => getActiveChatSession(project), [project]);
   const activeSessionRef = useRef<ChatSession | null>(activeSession);
   const selectedNodeRef = useRef<CanvasNode | null>(selectedNode);
@@ -60,13 +63,25 @@ export function useChatSidebarController({
 
   const agentChat = useAgentChat({
     initialMessages: activeSession?.messages ?? [],
-    onResponseData({ responseData }) {
+    onResponseData({ responseData, targetSessionId }) {
       logSidebarChat('assistant:data', {
         suggestionCount: responseData?.suggestions.length ?? 0,
         effectCount: responseData?.effects.length ?? 0,
         conversationId: responseData?.conversationId,
         previousResponseId: responseData?.previousResponseId,
       });
+
+      if (targetSessionId) {
+        setLatestResponseDataBySession((prev) => ({
+          ...prev,
+          [targetSessionId]: {
+            suggestions: [...(prev[targetSessionId]?.suggestions ?? []), ...(responseData?.suggestions ?? [])],
+            effects: [...(prev[targetSessionId]?.effects ?? []), ...(responseData?.effects ?? [])],
+            conversationId: responseData?.conversationId ?? prev[targetSessionId]?.conversationId,
+            previousResponseId: responseData?.previousResponseId ?? prev[targetSessionId]?.previousResponseId,
+          },
+        }));
+      }
 
       if (responseData?.effects?.length) {
         onApplyEffects(responseData.effects);
@@ -101,8 +116,15 @@ export function useChatSidebarController({
             : prev.project,
         ),
       );
+
+      if (targetSessionId) {
+        setLatestResponseDataBySession((prev) => ({
+          ...prev,
+          [targetSessionId]: responseData ?? prev[targetSessionId] ?? null,
+        }));
+      }
     },
-    onError(error) {
+    onError({ error }) {
       logSidebarChat('assistant:error', {
         message: error.message,
       });
@@ -124,6 +146,23 @@ export function useChatSidebarController({
 
   const voiceButtonLabel =
     voiceComposer.status === 'recording' ? '停止' : voiceComposer.status === 'transcribing' ? '转写中' : '录音';
+
+  const currentTask = useMemo(
+    () =>
+      deriveCurrentTask({
+        activeSession,
+        responseData: activeSession ? latestResponseDataBySession[activeSession.id] ?? null : null,
+        jobs: project.jobs,
+        chatStatus: agentChat.status,
+        chatError: agentChat.error,
+      }),
+    [activeSession, agentChat.error, agentChat.status, latestResponseDataBySession, project.jobs],
+  );
+
+  const sessionHistory = useMemo(
+    () => deriveSessionHistoryEntries(project.chat.sessions, project.chat.activeSessionId),
+    [project.chat.activeSessionId, project.chat.sessions],
+  );
 
   function createAndActivateSession(title = '新会话') {
     const session = createChatSession(title);
@@ -182,6 +221,11 @@ export function useChatSidebarController({
       selectedNodeType: request.canvasContext.selectedNode?.type ?? null,
       latestPrompt: request.canvasContext.latestPrompt,
     });
+
+    setLatestResponseDataBySession((prev) => ({
+      ...prev,
+      [session.id]: null,
+    }));
 
     setChatInput('');
     setState((prev) =>
@@ -242,7 +286,9 @@ export function useChatSidebarController({
     activeSession,
     chatInput,
     setChatInput,
+    currentTask,
     sessionCount: project.chat.sessions.length,
+    sessionHistory,
     voiceComposer,
     composerStatusText,
     voiceButtonLabel,

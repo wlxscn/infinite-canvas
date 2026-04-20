@@ -49,6 +49,45 @@ function createSeedProject() {
   };
 }
 
+function createEmptyChatSeedProject() {
+  const project = createSeedProject();
+  project.chat = {
+    activeSessionId: null,
+    sessions: [],
+  };
+  return project;
+}
+
+function buildChatSseResponse({
+  requestId,
+  text,
+  suggestions = [],
+  effects = [],
+}: {
+  requestId: string;
+  text: string;
+  suggestions?: Array<{ id: string; label: string; action: 'add-text' | 'change-style' | 'generate-variants' }>;
+  effects?: Array<Record<string, unknown>>;
+}) {
+  const textId = `assistant-text-${requestId}`;
+  return [
+    { type: 'text-start', id: textId },
+    { type: 'text-delta', id: textId, delta: text },
+    { type: 'text-end', id: textId },
+    {
+      type: 'data-agentResponse',
+      data: {
+        suggestions,
+        effects,
+        conversationId: `conv_${requestId}`,
+        previousResponseId: `resp_${requestId}`,
+      },
+    },
+  ]
+    .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
+    .join('');
+}
+
 function createEngineSeedProject() {
   const project = createSeedProject();
   project.board.nodes = [
@@ -224,27 +263,77 @@ test('can persist seeded sidebar sessions and local asset interactions after rel
 
   await expect(page.getByRole('complementary', { name: '素材管理侧栏' })).toBeVisible();
   await expect(page.getByRole('complementary', { name: 'Agent chat sidebar' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '主会话 1 条消息' })).toBeVisible();
+  await expect(page.getByLabel('当前任务')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '保留这个方向' })).toBeVisible();
   await expect(page.getByText(/资产 1/).first()).toBeVisible();
   await expect(page.getByText('先定一张主画面')).toHaveCount(0);
 
   await page.getByRole('button', { name: /Seed image/ }).click();
   await expect(page.getByText(/节点 1/)).toBeVisible();
-  await expect(page.getByText('保留这个方向')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '保留这个方向' })).toBeVisible();
 
-  await page.getByRole('button', { name: '新建会话' }).first().click();
-  await expect(sessionItems).toHaveCount(2);
-  await expect(page.getByRole('button', { name: '新会话 0 条消息' })).toHaveCount(1);
-  await expect(page.getByText(/暂无会话/)).toHaveCount(0);
+  await page.getByRole('button', { name: '新任务' }).first().click();
+  await expect(page.getByLabel('当前任务')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '新会话' })).toBeVisible();
+  await expect(sessionItems).toHaveCount(1);
   await sessionItems.first().click();
-  await expect(page.getByText('保留这个方向')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '保留这个方向' })).toBeVisible();
   await page.waitForTimeout(250);
 
   await page.reload();
 
   await expect(page.getByText(/资产 1/).first()).toBeVisible();
-  await expect(sessionItems).toHaveCount(2);
-  await expect(page.getByText('保留这个方向')).toBeVisible();
+  await expect(sessionItems).toHaveCount(1);
+});
+
+test('chat sidebar shows current task flow and suggestion-driven follow-ups after sending a message', async ({ page }) => {
+  await page.addInitScript(([storageKey, project]) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(project));
+    window.sessionStorage.setItem('__seeded_project__', 'true');
+  }, [STORAGE_KEY, createEmptyChatSeedProject()]);
+
+  await page.route('**/chat', async (route) => {
+    const request = route.request();
+    const body = request.postDataJSON() as { message?: string };
+    const isFollowUp = body.message?.includes('系列变体');
+
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache, no-transform',
+        connection: 'keep-alive',
+      },
+      body: isFollowUp
+        ? buildChatSseResponse({
+            requestId: 'followup',
+            text: '我会继续围绕当前方向延展两个新变体。',
+            suggestions: [],
+          })
+        : buildChatSseResponse({
+            requestId: 'initial',
+            text: '我会先整理一个清晰的执行方向，并给你下一步建议。',
+            suggestions: [{ id: 's1', label: '继续生成变体', action: 'generate-variants' }],
+          }),
+    });
+  });
+
+  await page.goto('/');
+
+  await page.getByLabel('发送给设计助理').fill('生成一只狗');
+  await page.getByRole('button', { name: '发送' }).click();
+
+  await expect(page.getByLabel('当前任务')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '生成一只狗' })).toBeVisible();
+  await expect(page.getByLabel('执行过程')).toBeVisible();
+  await expect(page.getByLabel('下一步')).toBeVisible();
+  await expect(page.getByRole('button', { name: '继续生成变体' })).toBeVisible();
+
+  await page.getByRole('button', { name: '继续生成变体' }).click();
+
+  await expect(page.getByRole('heading', { name: '请继续生成当前设计的系列变体' })).toBeVisible();
+  await expect(page.getByLabel('当前任务').getByText('我会继续围绕当前方向延展两个新变体。')).toBeVisible();
+  await expect(page.getByLabel('下一步')).toHaveCount(0);
 });
 
 test('asset sidebar can collapse and expand without hiding the canvas workspace', async ({ page }) => {
@@ -312,7 +401,7 @@ test('rulers stay visible and react to selection and zoom changes', async ({ pag
   }, [STORAGE_KEY, createSeedProject()]);
 
   await page.goto('/');
-  await expect(page.getByPlaceholder('例如：生成一张极简科技海报，或把当前标题改得更大胆')).toBeVisible();
+  await expect(page.getByPlaceholder('继续当前任务，或告诉 agent 如何调整方向')).toBeVisible();
   await page.getByRole('button', { name: /Seed image/ }).click();
   await expect(page.getByText(/节点 1/)).toBeVisible();
   await expect(page.locator('.canvas-ruler-top')).toBeVisible();
@@ -709,11 +798,11 @@ test('voice drafts stay editable until the user sends them from the sidebar comp
 
   const chatInput = page.getByRole('textbox', { name: '发送给设计助理' });
   await chatInput.fill('保留霓虹配色\n把主标题改成更大胆一点');
-  await expect(page.getByText('暂无会话')).toBeVisible();
+  await expect(page.getByText('暂无任务')).toBeVisible();
 
   await chatInput.fill('保留霓虹配色\n把主标题改成更大胆一点，并增加一行副标题');
   await page.getByRole('button', { name: '发送' }).click();
 
   await expect(page.getByText('保留霓虹配色\n把主标题改成更大胆一点，并增加一行副标题')).toBeVisible();
-  await expect(page.getByText('暂无会话')).toHaveCount(0);
+  await expect(page.getByText('暂无任务')).toHaveCount(0);
 });

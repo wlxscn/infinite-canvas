@@ -58,7 +58,7 @@ function App() {
     [state.project.board.nodes, state.selectedIds],
   );
   const isSelectedGroup = selectedNode?.type === 'group';
-  const { selectedAsset, statsText, selectionToolbarStyle, hasCanvasContent, latestJob } = useWorkspaceViewModel(
+  const { statsText, selectionToolbarStyle, hasCanvasContent } = useWorkspaceViewModel(
     state,
     selectedNodes,
     selectedNode,
@@ -97,7 +97,9 @@ function App() {
     activeSession,
     chatInput,
     setChatInput,
+    currentTask,
     sessionCount,
+    sessionHistory,
     voiceComposer,
     composerStatusText,
     voiceButtonLabel,
@@ -217,11 +219,10 @@ function App() {
               isOpen={isAgentSidebarOpen}
               sessionCount={sessionCount}
               sessions={state.project.chat.sessions}
+              sessionHistory={sessionHistory}
               activeSessionId={state.project.chat.activeSessionId}
               activeSession={activeSession}
-              selectedNode={selectedNode}
-              selectedAsset={selectedAsset}
-              latestJob={latestJob}
+              currentTask={currentTask}
               chatInput={chatInput}
               composerStatusText={composerStatusText}
               voiceButtonLabel={voiceButtonLabel}

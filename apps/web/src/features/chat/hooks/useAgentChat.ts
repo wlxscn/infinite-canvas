@@ -22,7 +22,7 @@ interface UseAgentChatOptions {
     responseData: ReturnType<typeof extractAgentResponseData>;
     targetSessionId: string | null;
   }) => void;
-  onError?: (error: Error) => void;
+  onError?: (options: { error: Error; targetSessionId: string | null }) => void;
 }
 
 export function useAgentChat({ initialMessages, onResponseData, onAssistantFinish, onError }: UseAgentChatOptions) {
@@ -59,7 +59,10 @@ export function useAgentChat({ initialMessages, onResponseData, onAssistantFinis
     },
     onError(error) {
       logChat('transport:error', { message: error.message });
-      onError?.(error);
+      onError?.({
+        error,
+        targetSessionId: pendingTargetSessionIdRef.current,
+      });
     },
     onFinish({ message }) {
       const responseData = extractAgentResponseData(message) ?? latestResponseDataRef.current;

@@ -936,7 +936,7 @@ body {
   border-radius: 30px;
   padding: 18px;
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto auto auto auto auto 1fr auto;
   gap: 12px;
   overflow: hidden;
   background:
@@ -974,17 +974,53 @@ body {
   color: #716a61;
 }
 
-.agent-context-card {
+.agent-task-card,
+.agent-task-section {
   border-radius: 22px;
-  padding: 12px;
-  background: rgba(255, 247, 235, 0.82);
+  padding: 14px;
+  background: rgba(255, 250, 243, 0.88);
+  border: 1px solid rgba(24, 24, 27, 0.06);
 }
 
-.agent-context-card p {
+.agent-task-card h2 {
+  margin: 10px 0 8px;
+  font-size: 24px;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  color: #241f19;
+}
+
+.agent-task-card p,
+.agent-task-section p {
   margin: 0;
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.6;
   color: #555049;
+}
+
+.agent-task-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.agent-task-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(35, 35, 35, 0.08);
+  color: #403930;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.agent-task-chip-accent,
+.status-pill-soft {
+  background: rgba(255, 236, 199, 0.88);
+  color: #8c5a00;
 }
 
 .agent-session-list {
@@ -1015,11 +1051,71 @@ body {
 .agent-session-item span {
   font-size: 11px;
   color: #716a61;
+  line-height: 1.45;
 }
 
 .agent-session-item.active {
   border-color: rgba(196, 142, 34, 0.35);
   background: rgba(255, 245, 228, 0.96);
+}
+
+.agent-task-timeline {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.agent-task-timeline-item {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #6f665b;
+}
+
+.agent-task-timeline-item.done,
+.agent-task-timeline-item.current {
+  color: #241f19;
+}
+
+.agent-task-timeline-item.failed {
+  color: #a1372f;
+}
+
+.agent-task-timeline-marker {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(35, 35, 35, 0.1);
+  border: 1px solid rgba(35, 35, 35, 0.18);
+}
+
+.agent-task-timeline-item.done .agent-task-timeline-marker {
+  background: #2d6a4f;
+  border-color: #2d6a4f;
+}
+
+.agent-task-timeline-item.current .agent-task-timeline-marker {
+  background: #d97706;
+  border-color: #d97706;
+}
+
+.agent-task-timeline-item.failed .agent-task-timeline-marker {
+  background: #b42318;
+  border-color: #b42318;
+}
+
+.agent-next-actions {
+  margin-top: 10px;
+}
+
+.chat-thread-wrap {
+  min-height: 0;
+  display: grid;
+  gap: 10px;
 }
 
 .chat-thread {
@@ -1073,6 +1169,7 @@ body {
   justify-self: start;
   background: rgba(255, 252, 247, 0.96);
   border-bottom-left-radius: 8px;
+  border: 1px solid rgba(24, 24, 27, 0.06);
 }
 
 .chat-meta {

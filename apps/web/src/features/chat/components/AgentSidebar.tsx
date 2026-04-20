@@ -1,6 +1,7 @@
 import type { RefObject } from 'react';
 import type { ChatSuggestionAction } from '@infinite-canvas/shared/chat';
-import type { AssetRecord, CanvasNode, ChatSession, GenerationJob } from '../../../types/canvas';
+import type { ChatSession } from '../../../types/canvas';
+import type { DerivedCurrentTask, DerivedSessionHistoryEntry } from '../deriveCurrentTask';
 import type { VoiceComposerStatus } from '../hooks/useVoiceComposer';
 
 interface VoiceComposerViewModel {
@@ -13,11 +14,10 @@ interface AgentSidebarProps {
   isOpen: boolean;
   sessionCount: number;
   sessions: ChatSession[];
+  sessionHistory: DerivedSessionHistoryEntry[];
   activeSessionId: string | null;
   activeSession: ChatSession | null;
-  selectedNode: CanvasNode | null;
-  selectedAsset: AssetRecord | null;
-  latestJob: GenerationJob | null;
+  currentTask: DerivedCurrentTask | null;
   chatInput: string;
   composerStatusText: string;
   voiceButtonLabel: string;
@@ -35,11 +35,10 @@ export function AgentSidebar({
   isOpen,
   sessionCount,
   sessions,
+  sessionHistory,
   activeSessionId,
   activeSession,
-  selectedNode,
-  selectedAsset,
-  latestJob,
+  currentTask,
   chatInput,
   composerStatusText,
   voiceButtonLabel,
@@ -52,6 +51,8 @@ export function AgentSidebar({
   onSubmitChat,
   onSuggestion,
 }: AgentSidebarProps) {
+  const nextActions = currentTask?.nextActions ?? [];
+
   return (
     <aside
       id="agent-sidebar"
@@ -62,13 +63,13 @@ export function AgentSidebar({
       <div className="agent-sidebar-header">
         <div>
           <p className="section-kicker">Assistant</p>
-          <strong>设计对话</strong>
-          <p>先在这里描述你想生成的内容，再围绕当前画布继续细化与迭代。</p>
+          <strong>设计协作</strong>
+          <p>围绕当前画布持续推进任务，随时接管、追问或修正 agent 的方向。</p>
         </div>
         <div className="agent-sidebar-actions">
           <span className="status-pill">{sessionCount} 个会话</span>
           <button className="ghost-btn" type="button" onClick={onCreateSession}>
-            新建会话
+            新任务
           </button>
           <button className="ghost-btn" type="button" onClick={onClose} aria-label="收起聊天面板">
             收起
@@ -76,69 +77,134 @@ export function AgentSidebar({
         </div>
       </div>
 
-      {sessionCount > 0 ? (
-        <section className="agent-session-list">
-          {sessions.map((session) => (
-            <button
-              key={session.id}
-              className={session.id === activeSessionId ? 'agent-session-item active' : 'agent-session-item'}
-              type="button"
-              onClick={() => onActivateSession(session.id)}
-            >
-              <strong>{session.title}</strong>
-              <span>{session.messages.length} 条消息</span>
-            </button>
-          ))}
+      {currentTask ? (
+        <section className="agent-task-card" aria-label="当前任务">
+          <div className="panel-row">
+            <strong>当前任务</strong>
+            <span className="status-pill status-pill-soft">{currentTask.intentLabel}</span>
+          </div>
+          <h2>{currentTask.title}</h2>
+          <div className="agent-task-status-row">
+            <span className="agent-task-chip">{currentTask.intentLabel}</span>
+            <span className="agent-task-chip agent-task-chip-accent">{currentTask.statusLabel}</span>
+          </div>
+          <p>{currentTask.summary}</p>
         </section>
       ) : null}
 
-      {selectedNode || selectedAsset || latestJob ? (
-        <section className="agent-context-card">
+      {currentTask ? (
+        <section className="agent-task-section" aria-label="执行过程">
           <div className="panel-row">
-            <strong>当前上下文</strong>
-            <span>{selectedNode?.type ?? latestJob?.mediaType ?? latestJob?.status ?? 'idle'}</span>
+            <strong>执行过程</strong>
+            <span>{currentTask.timeline.length} 个步骤</span>
           </div>
-          {selectedNode ? <p>已选中 {selectedNode.type} 节点，可继续补文字、改风格或生成变体。</p> : null}
-          {selectedAsset ? <p>当前关联资产：{selectedAsset.name} ({selectedAsset.type === 'video' ? '视频' : '图片'})</p> : null}
-          {!selectedNode && !selectedAsset && latestJob ? <p>最近一次生成主题：{latestJob.prompt}</p> : null}
+          <ol className="agent-task-timeline">
+            {currentTask.timeline.map((item) => (
+              <li
+                key={item.id}
+                className={
+                  item.status === 'done'
+                    ? 'agent-task-timeline-item done'
+                    : item.status === 'current'
+                      ? 'agent-task-timeline-item current'
+                      : item.status === 'failed'
+                        ? 'agent-task-timeline-item failed'
+                        : 'agent-task-timeline-item'
+                }
+              >
+                <span className="agent-task-timeline-marker" aria-hidden="true" />
+                <span>{item.label}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
+
+      {activeSession && nextActions.length > 0 ? (
+        <section className="agent-task-section" aria-label="下一步">
+          <div className="panel-row">
+            <strong>下一步</strong>
+            <span>{nextActions.length} 个建议</span>
+          </div>
+          <div className="chat-suggestions agent-next-actions">
+            {nextActions.map((suggestion) => (
+              <button
+                key={suggestion.id}
+                className="chat-suggestion-btn"
+                type="button"
+                onClick={() => onSuggestion(suggestion.action)}
+              >
+                {suggestion.label}
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {sessionHistory.length > 0 ? (
+        <section className="agent-task-section" aria-label="历史任务">
+          <div className="panel-row">
+            <strong>历史任务</strong>
+            <span>{sessionHistory.length} 条</span>
+          </div>
+          <div className="agent-session-list">
+            {sessionHistory.map((session) => (
+              <button
+                key={session.id}
+                className={session.id === activeSessionId ? 'agent-session-item active' : 'agent-session-item'}
+                type="button"
+                onClick={() => onActivateSession(session.id)}
+              >
+                <strong>{session.title}</strong>
+                <span>{session.subtitle}</span>
+              </button>
+            ))}
+          </div>
         </section>
       ) : null}
 
       {activeSession ? (
-        <div className="chat-thread" ref={chatThreadRef}>
-          {activeSession.messages.map((message) => (
-            <article
-              key={message.id}
-              className={message.role === 'assistant' ? 'chat-message chat-message-assistant' : 'chat-message chat-message-user'}
-            >
-              <div className="chat-meta">
-                <strong>{message.role === 'assistant' ? '设计助理' : '你'}</strong>
-                <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
-              </div>
-              <p>{message.text}</p>
-              {message.suggestions.length > 0 ? (
-                <div className="chat-suggestions">
-                  {message.suggestions.map((suggestion) => (
-                    <button
-                      key={suggestion.id}
-                      className="chat-suggestion-btn"
-                      type="button"
-                      onClick={() => onSuggestion(suggestion.action)}
-                    >
-                      {suggestion.label}
-                    </button>
-                  ))}
+        <div className="chat-thread-wrap">
+          <div className="panel-row">
+            <strong>对话记录</strong>
+            <span>{activeSession.messages.length} 条消息</span>
+          </div>
+          <div className="chat-thread" ref={chatThreadRef}>
+            {activeSession.messages.map((message) => (
+              <article
+                key={message.id}
+                className={message.role === 'assistant' ? 'chat-message chat-message-assistant' : 'chat-message chat-message-user'}
+              >
+                <div className="chat-meta">
+                  <strong>{message.role === 'assistant' ? '设计助理' : '你'}</strong>
+                  <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
                 </div>
-              ) : null}
-            </article>
-          ))}
+                <p>{message.text}</p>
+              </article>
+            ))}
+          </div>
         </div>
       ) : (
         <div className="chat-empty-state">
-          <strong>暂无会话</strong>
-          <p>从这里开始首版生成或围绕当前画布继续修改。你也可以直接输入消息，系统会自动创建会话。</p>
+          <strong>暂无任务</strong>
+          <p>从这里开始首版生成或围绕当前画布继续修改。你也可以直接输入消息，系统会自动创建一个新的任务线程。</p>
+          {sessions.length > 0 ? (
+            <div className="agent-session-list">
+              {sessions.map((session) => (
+                <button
+                  key={session.id}
+                  className={session.id === activeSessionId ? 'agent-session-item active' : 'agent-session-item'}
+                  type="button"
+                  onClick={() => onActivateSession(session.id)}
+                >
+                  <strong>{session.title}</strong>
+                  <span>{session.messages.length} 条消息</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
           <button className="ghost-btn ghost-btn-dark" type="button" onClick={onCreateSession}>
-            新建会话
+            新任务
           </button>
         </div>
       )}
@@ -156,7 +222,7 @@ export function AgentSidebar({
         <textarea
           className="text-input chat-input"
           aria-label="发送给设计助理"
-          placeholder="例如：生成一张极简科技海报，或把当前标题改得更大胆"
+          placeholder={activeSession ? '继续当前任务，或告诉 agent 如何调整方向' : '描述你想启动的任务，系统会自动创建任务线程'}
           value={chatInput}
           onChange={(event) => onChatInputChange(event.target.value)}
         />
