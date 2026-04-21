@@ -58,6 +58,7 @@ describe('project persistence', () => {
       name: 'motion',
       mimeType: 'video/mp4',
       src: 'https://example.com/video.mp4',
+      frameSrc: 'data:image/jpeg;base64,frame',
       posterSrc: 'https://example.com/poster.jpg',
       width: 1920,
       height: 1080,
@@ -80,6 +81,7 @@ describe('project persistence', () => {
 
     const loaded = loadProject();
     expect(loaded.assets[0].type).toBe('video');
+    expect(loaded.assets[0].frameSrc).toBe('data:image/jpeg;base64,frame');
     expect(loaded.assets[0].posterSrc).toBe('https://example.com/poster.jpg');
     expect(loaded.jobs[0].mediaType).toBe('video');
   });

@@ -208,6 +208,8 @@ function createSelectionChromeSeedProject() {
     name: 'Seed video',
     mimeType: 'video/mp4',
     src: 'data:video/mp4;base64,AAAA',
+    frameSrc:
+      'data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20320%20180%22%3E%3Crect%20width=%22320%22%20height=%22180%22%20fill=%22%23111827%22/%3E%3Crect%20x=%2224%22%20y=%2224%22%20width=%22272%22%20height=%22132%22%20rx=%2212%22%20fill=%22%232563eb%22/%3E%3C/svg%3E',
     posterSrc: null,
     width: 1280,
     height: 720,

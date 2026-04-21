@@ -14,6 +14,7 @@ import { groupNodeAdapter } from './adapters/group';
 export interface CanvasAssetRecord extends AssetRecordLike {
   src: string;
   name: string;
+  frameSrc?: string | null;
   posterSrc?: string | null;
 }
 

@@ -367,7 +367,7 @@ body {
   display: flex;
   align-items: flex-end;
   padding: 10px 12px;
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.16) 0%, rgba(15, 23, 42, 0.52) 100%);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.08) 0%, rgba(15, 23, 42, 0.46) 100%);
   color: rgba(255, 255, 255, 0.86);
   font-size: 11px;
   letter-spacing: 0.02em;

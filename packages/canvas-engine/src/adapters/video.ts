@@ -1,11 +1,29 @@
 import { pointInBounds } from '../geometry';
 import type { NodeAdapter } from '../contracts';
+import { canDrawLoadedImage, type CanvasRenderRuntime } from '../runtime';
 import type { BoardDoc, VideoNode } from '../model';
 import { drawNormalizedRect, getBoxBounds, hitResizeHandle, resizeBoxNode, translateBoxNode } from './shared';
 
-type VideoAssetRuntime = {
-  assetMap: Map<string, { id: string; name: string }>;
-};
+type VideoAssetRuntime = CanvasRenderRuntime<{ id: string; name: string; frameSrc?: string | null }>;
+
+function drawImageCover(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, w: number, h: number): void {
+  const sourceRatio = image.naturalWidth / image.naturalHeight;
+  const targetRatio = w / h;
+  let sx = 0;
+  let sy = 0;
+  let sw = image.naturalWidth;
+  let sh = image.naturalHeight;
+
+  if (sourceRatio > targetRatio) {
+    sw = image.naturalHeight * targetRatio;
+    sx = (image.naturalWidth - sw) / 2;
+  } else if (sourceRatio < targetRatio) {
+    sh = image.naturalWidth / targetRatio;
+    sy = (image.naturalHeight - sh) / 2;
+  }
+
+  ctx.drawImage(image, sx, sy, sw, sh, x, y, w, h);
+}
 
 export const videoNodeAdapter: NodeAdapter<VideoNode, BoardDoc, VideoAssetRuntime> = {
   type: 'video',
@@ -14,14 +32,28 @@ export const videoNodeAdapter: NodeAdapter<VideoNode, BoardDoc, VideoAssetRuntim
 
     drawNormalizedRect(getBoxBounds(node, env.board), env.board.viewport, (x, y, w, h) => {
       ctx.save();
-      const gradient = ctx.createLinearGradient(x, y, x + w, y + h);
-      gradient.addColorStop(0, '#111827');
-      gradient.addColorStop(0.55, '#1f2937');
-      gradient.addColorStop(1, '#0f172a');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(x, y, w, h);
+      if (asset?.frameSrc) {
+        const frame = env.runtime.getImage(asset.frameSrc, env.rerender);
+        if (canDrawLoadedImage(frame)) {
+          drawImageCover(ctx, frame, x, y, w, h);
+        } else {
+          const gradient = ctx.createLinearGradient(x, y, x + w, y + h);
+          gradient.addColorStop(0, '#111827');
+          gradient.addColorStop(0.55, '#1f2937');
+          gradient.addColorStop(1, '#0f172a');
+          ctx.fillStyle = gradient;
+          ctx.fillRect(x, y, w, h);
+        }
+      } else {
+        const gradient = ctx.createLinearGradient(x, y, x + w, y + h);
+        gradient.addColorStop(0, '#111827');
+        gradient.addColorStop(0.55, '#1f2937');
+        gradient.addColorStop(1, '#0f172a');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x, y, w, h);
+      }
 
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.28)';
+      ctx.fillStyle = asset?.frameSrc ? 'rgba(15, 23, 42, 0.18)' : 'rgba(15, 23, 42, 0.28)';
       ctx.fillRect(x, y, w, h);
 
       const badgeSize = Math.min(w, h) * 0.28;

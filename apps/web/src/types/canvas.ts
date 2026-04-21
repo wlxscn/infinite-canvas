@@ -33,6 +33,7 @@ export interface AssetRecord {
   src: string;
   width: number;
   height: number;
+  frameSrc?: string | null;
   posterSrc?: string | null;
   durationSeconds?: number;
   origin: 'upload' | 'generated';

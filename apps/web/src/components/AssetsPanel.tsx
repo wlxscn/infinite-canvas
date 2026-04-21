@@ -35,7 +35,11 @@ function AssetSection({
             <div className={asset.type === 'video' ? 'asset-card-preview asset-card-preview-video' : 'asset-card-preview'}>
               {asset.type === 'video' ? (
                 <>
-                  <video aria-hidden="true" muted playsInline preload="metadata" src={asset.src} poster={asset.posterSrc ?? undefined} />
+                  {asset.frameSrc ? (
+                    <img alt={asset.name} src={asset.frameSrc} />
+                  ) : (
+                    <video aria-hidden="true" muted playsInline preload="metadata" src={asset.src} poster={asset.posterSrc ?? undefined} />
+                  )}
                   <span className="asset-chip-badge">视频</span>
                 </>
               ) : (

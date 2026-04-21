@@ -470,6 +470,79 @@ describe('canvas engine', () => {
     expect('assetMap' in project).toBe(false);
   });
 
+  it('draws a captured frame for video nodes when frameSrc is available', () => {
+    const OriginalImage = globalThis.Image;
+    class MockImage {
+      complete = true;
+      naturalWidth = 320;
+      naturalHeight = 180;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      src = '';
+    }
+    vi.stubGlobal('Image', MockImage);
+
+    const canvas = document.createElement('canvas');
+    Object.defineProperty(canvas, 'clientWidth', { value: 800 });
+    Object.defineProperty(canvas, 'clientHeight', { value: 600 });
+    const ctx = {
+      setTransform: vi.fn(),
+      clearRect: vi.fn(),
+      fillRect: vi.fn(),
+      strokeRect: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      closePath: vi.fn(),
+      arc: vi.fn(),
+      stroke: vi.fn(),
+      fill: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      fillText: vi.fn(),
+      drawImage: vi.fn(),
+    } as unknown as CanvasRenderingContext2D;
+    vi.spyOn(canvas, 'getContext').mockReturnValue(ctx);
+
+    renderScene({
+      canvas,
+      board: {
+        version: 2,
+        viewport: { tx: 0, ty: 0, scale: 1 },
+        nodes: [
+          {
+            id: 'video_1',
+            type: 'video',
+            x: 100,
+            y: 80,
+            w: 160,
+            h: 90,
+            assetId: 'asset_video_1',
+          },
+        ],
+      },
+      assets: [
+        {
+          id: 'asset_video_1',
+          src: 'data:video/mp4;base64,AAAA',
+          frameSrc: 'data:image/jpeg;base64,frame',
+          name: 'Frame video',
+          posterSrc: null,
+        },
+      ],
+      selectedId: null,
+      hoveredId: null,
+      activeGroupId: null,
+      draftRect: null,
+      draftFreehand: null,
+      draftConnector: null,
+    });
+
+    expect(ctx.drawImage).toHaveBeenCalled();
+    expect(ctx.drawImage).toHaveBeenCalledWith(expect.any(MockImage), 0, 0, 320, 180, 100, 80, 160, 90);
+    vi.stubGlobal('Image', OriginalImage);
+  });
+
   it('only exposes resize handles for nodes whose adapters support resizing', () => {
     const image: CanvasNode = {
       id: 'image_1',

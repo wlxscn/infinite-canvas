@@ -20,7 +20,9 @@ import type {
   GenerationJob,
   TextNode,
 } from '../types/canvas';
+import { fitAssetSize } from '../utils/assetSizing';
 import { createId } from '../utils/id';
+import { captureVideoFrame } from '../utils/videoFrame';
 
 function createPendingJob(prompt: string, mediaType: GenerationJob['mediaType'] = 'image'): GenerationJob {
   const now = Date.now();
@@ -81,8 +83,7 @@ function createGeneratedAsset({
 }
 
 function createGeneratedNode(asset: AssetRecord, center: { x: number; y: number }): CanvasNode {
-  const width = Math.min(asset.width, 360);
-  const height = Math.min(asset.height, 240);
+  const { width, height } = fitAssetSize(asset);
 
   return {
     id: createId('node'),
@@ -128,6 +129,29 @@ export function useCanvasGenerationController({
     selectedIdRef.current = selectedId;
   }, [selectedId]);
 
+  function updateVideoFrame(assetId: string, frameSrc: string): void {
+    setState((prev) =>
+      replaceProjectNoHistory(prev, {
+        ...prev.project,
+        assets: prev.project.assets.map((asset) =>
+          asset.id === assetId && asset.type === 'video' && !asset.frameSrc ? { ...asset, frameSrc } : asset,
+        ),
+      }),
+    );
+  }
+
+  function captureVideoAssetFrame(asset: AssetRecord): void {
+    if (asset.type !== 'video' || asset.frameSrc) {
+      return;
+    }
+
+    void captureVideoFrame(asset.src)
+      .then((frameSrc) => updateVideoFrame(asset.id, frameSrc))
+      .catch((error) => {
+        console.warn('Failed to capture video frame preview', error);
+      });
+  }
+
   function insertAsset(asset: AssetRecord): void {
     setState((prev) => {
       const viewport = prev.project.board.viewport;
@@ -150,6 +174,8 @@ export function useCanvasGenerationController({
       const nextState = commitProject(prev, nextProject);
       return setSelectedId(nextState, node.id);
     });
+
+    captureVideoAssetFrame(asset);
   }
 
   async function handleUpload(files: FileList | null): Promise<void> {
@@ -217,6 +243,7 @@ export function useCanvasGenerationController({
           }),
         }),
       );
+      captureVideoAssetFrame(asset);
     } catch (error) {
       setState((prev) =>
         replaceProjectNoHistory(prev, {

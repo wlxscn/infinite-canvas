@@ -47,6 +47,9 @@ function VideoOverlayItem({ node, asset, board, selected, hovered }: VideoOverla
         top: topLeft.y,
         width,
         height,
+        backgroundImage: asset.frameSrc ? `url("${asset.frameSrc}")` : undefined,
+        backgroundSize: asset.frameSrc ? 'cover' : undefined,
+        backgroundPosition: asset.frameSrc ? 'center' : undefined,
       }}
     >
       <video
