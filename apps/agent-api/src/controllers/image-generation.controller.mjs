@@ -1,4 +1,9 @@
 import { createMiniMaxService } from '../services/minimax.service.mjs';
+import {
+  createMediaStorageService,
+  GeneratedMediaStorageConfigError,
+  GeneratedMediaStorageError,
+} from '../services/media-storage.service.mjs';
 
 function getImageDimensions(aspectRatio) {
   switch (aspectRatio) {
@@ -22,8 +27,26 @@ function getImageDimensions(aspectRatio) {
   }
 }
 
-export function createImageGenerationController() {
-  const minimaxService = createMiniMaxService();
+function writeMediaStorageError(response, error) {
+  if (error instanceof GeneratedMediaStorageConfigError) {
+    response.writeHead(503, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ error: error.message, code: error.code }));
+    return true;
+  }
+
+  if (error instanceof GeneratedMediaStorageError) {
+    response.writeHead(502, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ error: error.message, code: error.code }));
+    return true;
+  }
+
+  return false;
+}
+
+export function createImageGenerationController({
+  minimaxService = createMiniMaxService(),
+  mediaStorageService = createMediaStorageService(),
+} = {}) {
 
   return async function imageGenerationController(request, response) {
     const chunks = [];
@@ -43,6 +66,16 @@ export function createImageGenerationController() {
       return;
     }
 
+    try {
+      mediaStorageService.assertReady?.();
+    } catch (error) {
+      if (writeMediaStorageError(response, error)) {
+        return;
+      }
+
+      throw error;
+    }
+
     const result = await minimaxService.generateImage({ prompt, aspectRatio });
 
     if (!result) {
@@ -51,10 +84,26 @@ export function createImageGenerationController() {
       return;
     }
 
+    let storedMedia;
+    try {
+      storedMedia = await mediaStorageService.storeGeneratedMedia({
+        mediaType: 'image',
+        sourceUrl: result.imageUrl,
+        provider: 'minimax',
+        requestId: result.requestId,
+      });
+    } catch (error) {
+      if (writeMediaStorageError(response, error)) {
+        return;
+      }
+
+      throw error;
+    }
+
     response.writeHead(200, { 'content-type': 'application/json' });
     response.end(
       JSON.stringify({
-        imageUrl: result.imageUrl,
+        imageUrl: storedMedia.url,
         requestId: result.requestId,
         aspectRatio: result.aspectRatio,
         ...getImageDimensions(result.aspectRatio),

@@ -3,6 +3,7 @@ import { previewChangeStyleTool } from '../tools/change-style.tool.mjs';
 import { previewGenerateVariantTool } from '../tools/generate-variant.tool.mjs';
 import { previewGenerateVideoTool } from '../tools/generate-video.tool.mjs';
 import { createMiniMaxService } from './minimax.service.mjs';
+import { createMediaStorageService } from './media-storage.service.mjs';
 import { AGENT_EFFECT_TYPES } from '../../../../packages/shared/src/runtime.mjs';
 
 const TEXT_KEYWORDS = ['文字', '文案', '标题', 'slogan', 'copy', 'headline', 'title', 'text'];
@@ -124,8 +125,10 @@ function previewFallback({ message, canvasContext }) {
   return previewGenerateVariantTool({ message, canvasContext });
 }
 
-export function createToolRunnerService() {
-  const minimaxService = createMiniMaxService();
+export function createToolRunnerService({
+  minimaxService = createMiniMaxService(),
+  mediaStorageService = createMediaStorageService(),
+} = {}) {
   const toolHandlers = {
     add_text_to_canvas: previewAddTextTool,
     generate_image_variant: previewGenerateVariantTool,
@@ -150,6 +153,7 @@ export function createToolRunnerService() {
       });
     },
     async generateImageEffect({ prompt }) {
+      mediaStorageService.assertReady?.();
       const generated = await minimaxService.generateImage({ prompt });
 
       if (!generated) {
@@ -158,16 +162,24 @@ export function createToolRunnerService() {
         };
       }
 
+      const storedMedia = await mediaStorageService.storeGeneratedMedia({
+        mediaType: 'image',
+        sourceUrl: generated.imageUrl,
+        provider: 'minimax',
+        requestId: generated.requestId,
+      });
+
       return {
         type: AGENT_EFFECT_TYPES.INSERT_IMAGE,
         prompt,
-        imageUrl: generated.imageUrl,
+        imageUrl: storedMedia.url,
         width: generated.width,
         height: generated.height,
         mimeType: 'image/jpeg',
       };
     },
     async generateVideoEffect({ prompt }) {
+      mediaStorageService.assertReady?.();
       const generated = await minimaxService.generateVideo({ prompt });
 
       if (!generated) {
@@ -176,10 +188,19 @@ export function createToolRunnerService() {
         };
       }
 
+      const storedMedia = await mediaStorageService.storeGeneratedMedia({
+        mediaType: 'video',
+        sourceUrl: generated.videoUrl,
+        provider: 'minimax',
+        requestId: generated.requestId,
+        taskId: generated.taskId,
+        fileId: generated.fileId,
+      });
+
       return {
         type: AGENT_EFFECT_TYPES.INSERT_VIDEO,
         prompt,
-        videoUrl: generated.videoUrl,
+        videoUrl: storedMedia.url,
         width: generated.width,
         height: generated.height,
         posterUrl: generated.posterUrl ?? null,

@@ -33,6 +33,15 @@ export function getEnv() {
     minimaxVideoResolution: process.env.MINIMAX_VIDEO_RESOLUTION ?? '1080P',
     minimaxVideoPollIntervalMs: Number.parseInt(process.env.MINIMAX_VIDEO_POLL_INTERVAL_MS ?? '10000', 10),
     minimaxVideoTimeoutMs: Number.parseInt(process.env.MINIMAX_VIDEO_TIMEOUT_MS ?? '600000', 10),
+    cloudflareR2AccountId: process.env.CLOUDFLARE_R2_ACCOUNT_ID ?? '',
+    cloudflareR2AccessKeyId: process.env.CLOUDFLARE_R2_ACCESS_KEY_ID ?? '',
+    cloudflareR2SecretAccessKey: process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY ?? '',
+    cloudflareR2Bucket: process.env.CLOUDFLARE_R2_BUCKET ?? '',
+    cloudflareR2PublicBaseUrl: process.env.CLOUDFLARE_R2_PUBLIC_BASE_URL ?? '',
+    cloudflareR2KeyPrefix: process.env.CLOUDFLARE_R2_KEY_PREFIX ?? 'generated',
+    generatedMediaMaxBytes: Number.parseInt(process.env.GENERATED_MEDIA_MAX_BYTES ?? `${250 * 1024 * 1024}`, 10),
+    generatedMediaFetchTimeoutMs: Number.parseInt(process.env.GENERATED_MEDIA_FETCH_TIMEOUT_MS ?? '60000', 10),
+    generatedMediaCacheControl: process.env.GENERATED_MEDIA_CACHE_CONTROL ?? 'public, max-age=31536000, immutable',
     supabaseUrl: process.env.SUPABASE_URL ?? '',
     supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
     corsOrigins: (process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://127.0.0.1:5173')
@@ -55,6 +64,14 @@ export function validateEnv() {
 
   if (!Number.isFinite(env.transcriptionTimeoutMs) || env.transcriptionTimeoutMs <= 0) {
     throw new Error('TRANSCRIPTION_TIMEOUT_MS must be a positive integer.');
+  }
+
+  if (!Number.isFinite(env.generatedMediaMaxBytes) || env.generatedMediaMaxBytes <= 0) {
+    throw new Error('GENERATED_MEDIA_MAX_BYTES must be a positive integer.');
+  }
+
+  if (!Number.isFinite(env.generatedMediaFetchTimeoutMs) || env.generatedMediaFetchTimeoutMs <= 0) {
+    throw new Error('GENERATED_MEDIA_FETCH_TIMEOUT_MS must be a positive integer.');
   }
 
   if (!env.llmDefaultTextProvider) {

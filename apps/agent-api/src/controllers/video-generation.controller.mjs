@@ -1,7 +1,30 @@
 import { createMiniMaxService } from '../services/minimax.service.mjs';
+import {
+  createMediaStorageService,
+  GeneratedMediaStorageConfigError,
+  GeneratedMediaStorageError,
+} from '../services/media-storage.service.mjs';
 
-export function createVideoGenerationController() {
-  const minimaxService = createMiniMaxService();
+function writeMediaStorageError(response, error) {
+  if (error instanceof GeneratedMediaStorageConfigError) {
+    response.writeHead(503, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ error: error.message, code: error.code }));
+    return true;
+  }
+
+  if (error instanceof GeneratedMediaStorageError) {
+    response.writeHead(502, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ error: error.message, code: error.code }));
+    return true;
+  }
+
+  return false;
+}
+
+export function createVideoGenerationController({
+  minimaxService = createMiniMaxService(),
+  mediaStorageService = createMediaStorageService(),
+} = {}) {
 
   return async function videoGenerationController(request, response) {
     const chunks = [];
@@ -23,6 +46,16 @@ export function createVideoGenerationController() {
       return;
     }
 
+    try {
+      mediaStorageService.assertReady?.();
+    } catch (error) {
+      if (writeMediaStorageError(response, error)) {
+        return;
+      }
+
+      throw error;
+    }
+
     const result = await minimaxService.generateVideo({ prompt, durationSeconds, resolution });
 
     if (!result) {
@@ -31,10 +64,28 @@ export function createVideoGenerationController() {
       return;
     }
 
+    let storedMedia;
+    try {
+      storedMedia = await mediaStorageService.storeGeneratedMedia({
+        mediaType: 'video',
+        sourceUrl: result.videoUrl,
+        provider: 'minimax',
+        requestId: result.requestId,
+        taskId: result.taskId,
+        fileId: result.fileId,
+      });
+    } catch (error) {
+      if (writeMediaStorageError(response, error)) {
+        return;
+      }
+
+      throw error;
+    }
+
     response.writeHead(200, { 'content-type': 'application/json' });
     response.end(
       JSON.stringify({
-        videoUrl: result.videoUrl,
+        videoUrl: storedMedia.url,
         posterUrl: result.posterUrl ?? null,
         requestId: result.requestId,
         taskId: result.taskId,
