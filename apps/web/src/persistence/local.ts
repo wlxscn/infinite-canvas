@@ -1,4 +1,5 @@
 import { createEmptyProject } from '../state/store';
+import type { AgentEffect } from '@infinite-canvas/shared/tool-effects';
 import type { CanvasNode, CanvasProject, ChatSession, Point } from '../types/canvas';
 
 export const STORAGE_KEY = 'infinite-canvas:v2';
@@ -70,7 +71,25 @@ function normalizeSession(session: Partial<ChatSession>): ChatSession {
     title: typeof session.title === 'string' && session.title.trim().length > 0 ? session.title : '新会话',
     createdAt: typeof session.createdAt === 'number' ? session.createdAt : Date.now(),
     updatedAt: typeof session.updatedAt === 'number' ? session.updatedAt : Date.now(),
-    messages: Array.isArray(session.messages) ? session.messages : [],
+    messages: Array.isArray(session.messages)
+      ? session.messages.flatMap((message) => {
+          if (!message || typeof message !== 'object') {
+            return [];
+          }
+
+          const candidate = message as Partial<ChatSession['messages'][number]> & { effects?: AgentEffect[] };
+          return [
+            {
+              id: typeof candidate.id === 'string' ? candidate.id : crypto.randomUUID(),
+              role: candidate.role === 'assistant' ? 'assistant' : 'user',
+              text: typeof candidate.text === 'string' ? candidate.text : '',
+              createdAt: typeof candidate.createdAt === 'number' ? candidate.createdAt : Date.now(),
+              suggestions: Array.isArray(candidate.suggestions) ? candidate.suggestions : [],
+              effects: Array.isArray(candidate.effects) ? candidate.effects : [],
+            },
+          ];
+        })
+      : [],
     conversationId: typeof session.conversationId === 'string' ? session.conversationId : undefined,
     previousResponseId:
       typeof session.previousResponseId === 'string' || session.previousResponseId === null

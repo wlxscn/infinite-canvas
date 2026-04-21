@@ -3,6 +3,7 @@ import type {
   BoardDoc,
   CanvasNode,
   GroupNode,
+  GroupChildNode,
   CanvasProject,
   CanvasStoreState,
   GenerationJob,
@@ -251,7 +252,11 @@ export function wrapNodeInNewGroup(nodes: CanvasNode[], nodeId: string): CanvasN
   return wrapNodesInNewGroup(nodes, [nodeId]);
 }
 
-function getNodeBounds(node: CanvasNode): { x: number; y: number; w: number; h: number } {
+function isGroupableNode(node: CanvasNode): node is GroupChildNode {
+  return !isConnectorNode(node) && node.type !== 'group';
+}
+
+function getNodeBounds(node: GroupChildNode): { x: number; y: number; w: number; h: number } {
   if (node.type === 'freehand') {
     const minX = Math.min(...node.points.map((point) => point.x));
     const minY = Math.min(...node.points.map((point) => point.y));
@@ -273,7 +278,7 @@ function getNodeBounds(node: CanvasNode): { x: number; y: number; w: number; h: 
   };
 }
 
-function toGroupChild(node: CanvasNode, group: GroupNode): GroupNode['children'][number] {
+function toGroupChild(node: GroupChildNode, group: GroupNode): GroupNode['children'][number] {
   if (node.type === 'freehand') {
     return {
       ...node,
@@ -299,14 +304,14 @@ export function wrapNodesInNewGroup(nodes: CanvasNode[], nodeIds: string[]): Can
 
   const validIds = uniqueIds.filter((nodeId) => {
     const node = getHierarchicalNodeById(nodes, nodeId);
-    return !!node && !isConnectorNode(node) && node.type !== 'group' && !getNodeParentGroupId(nodes, nodeId);
+    return !!node && isGroupableNode(node) && !getNodeParentGroupId(nodes, nodeId);
   });
 
   if (validIds.length === 0) {
     return nodes;
   }
 
-  const orderedNodes = nodes.filter((node) => validIds.includes(node.id));
+  const orderedNodes = nodes.filter((node): node is GroupChildNode => validIds.includes(node.id) && isGroupableNode(node));
   if (orderedNodes.length === 0) {
     return nodes;
   }

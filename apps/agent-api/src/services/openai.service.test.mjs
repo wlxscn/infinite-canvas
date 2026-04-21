@@ -28,9 +28,6 @@ test('openai service prepares response from normalized tool results', async () =
     listTools() {
       return [];
     },
-    async preview() {
-      throw new Error('preview should not be called');
-    },
     async executeToolCall(toolCall) {
       executedToolCall = toolCall;
       return {
@@ -117,4 +114,64 @@ test('openai service maps gateway stream events to text deltas', async () => {
 
   assert.equal(text, '你好');
   assert.deepEqual(seen, ['你', '好']);
+});
+
+test('openai service returns direct assistant text when no tool call is selected', async () => {
+  const llmGateway = {
+    async callTools() {
+      return {
+        provider: 'minimax',
+        providerResponseId: 'provider_resp_2',
+        assistantText: '我是 Infinite Canvas 的设计助手。',
+        toolCalls: [],
+      };
+    },
+    async stream() {
+      throw new Error('stream should not be called for direct text responses');
+    },
+  };
+
+  const toolRunnerService = {
+    listTools() {
+      return [];
+    },
+    async executeToolCall() {
+      throw new Error('executeToolCall should not be called for direct text responses');
+    },
+  };
+
+  const service = createOpenAiService({ llmGateway });
+  const prepared = await service.prepareResponse({
+    request: {
+      message: '你是谁',
+      canvasContext: {
+        latestPrompt: '我是谁',
+        nodeCount: 1,
+        assetCount: 0,
+        selectedNode: null,
+      },
+    },
+    conversationState: {
+      conversationId: 'conv_2',
+      responseId: 'resp_2',
+      providerState: {},
+    },
+    toolRunnerService,
+  });
+
+  assert.equal(prepared.directText, '我是 Infinite Canvas 的设计助手。');
+  assert.deepEqual(prepared.suggestions, []);
+  assert.deepEqual(prepared.effects, []);
+  assert.equal(prepared.deferredGenerationEffect, null);
+
+  const seen = [];
+  const text = await service.streamPreparedResponse({
+    prepared,
+    onTextDelta(chunk) {
+      seen.push(chunk);
+    },
+  });
+
+  assert.equal(text, '我是 Infinite Canvas 的设计助手。');
+  assert.deepEqual(seen, ['我是 Infinite Canvas 的设计助手。']);
 });

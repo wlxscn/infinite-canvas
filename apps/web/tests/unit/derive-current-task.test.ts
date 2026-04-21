@@ -95,6 +95,27 @@ describe('deriveCurrentTask', () => {
     expect(task?.timeline[2]?.status).toBe('current');
   });
 
+  it('treats a streamed start-generation effect as generating even before a local job exists', () => {
+    const task = deriveCurrentTask({
+      activeSession: createSession({
+        messages: [
+          { id: 'u1', role: 'user', text: '生成一张海报', createdAt: 1, suggestions: [], effects: [] },
+          { id: 'a1', role: 'assistant', text: '正在准备生成。', createdAt: 2, suggestions: [], effects: [] },
+        ],
+      }),
+      responseData: createResponseData({
+        effects: [{ type: 'start-generation', prompt: '艺术海报', mediaType: 'image' }],
+      }),
+      jobs: [],
+      chatStatus: 'streaming',
+      chatError: null,
+    });
+
+    expect(task?.status).toBe('generating');
+    expect(task?.summary).toContain('艺术海报');
+    expect(task?.timeline[2]?.status).toBe('current');
+  });
+
   it('maps failed chat transport or generation state to a failed task', () => {
     const task = deriveCurrentTask({
       activeSession: createSession({

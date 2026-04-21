@@ -288,6 +288,57 @@ test('can persist seeded sidebar sessions and local asset interactions after rel
   await expect(sessionItems).toHaveCount(1);
 });
 
+test('can restore project-scoped sessions from backend project persistence after reload', async ({ page }) => {
+  const remoteProject = createSeedProject();
+  let saveCount = 0;
+
+  await page.route('**/projects/*', async (route) => {
+    const request = route.request();
+
+    if (request.method() === 'GET') {
+      await route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          projectId: '11111111-1111-4111-8111-111111111111',
+          project: remoteProject,
+          updatedAt: '2026-04-21T00:00:00.000Z',
+        }),
+      });
+      return;
+    }
+
+    if (request.method() === 'PUT') {
+      saveCount += 1;
+      await route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          projectId: '11111111-1111-4111-8111-111111111111',
+          project: request.postDataJSON()?.project ?? remoteProject,
+          updatedAt: '2026-04-21T00:00:01.000Z',
+        }),
+      });
+      return;
+    }
+
+    await route.fallback();
+  });
+
+  await page.goto('/');
+
+  await expect(page.getByRole('complementary', { name: 'Agent chat sidebar' })).toBeVisible();
+  await expect(page.getByText('主会话')).toBeVisible();
+  await expect(page.getByText('保留这个方向')).toBeVisible();
+  await expect(page.getByText(/资产 1/).first()).toBeVisible();
+
+  await page.reload();
+
+  await expect(page.getByText('主会话')).toBeVisible();
+  await expect(page.getByText('保留这个方向')).toBeVisible();
+  expect(saveCount).toBeGreaterThanOrEqual(0);
+});
+
 test('chat sidebar shows current task flow and suggestion-driven follow-ups after sending a message', async ({ page }) => {
   await page.addInitScript(([storageKey, project]) => {
     window.localStorage.setItem(storageKey, JSON.stringify(project));

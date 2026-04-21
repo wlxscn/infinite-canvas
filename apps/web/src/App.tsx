@@ -11,7 +11,9 @@ import { buildCanvasContext } from './features/chat/buildCanvasContext';
 import { AgentSidebar } from './features/chat/components/AgentSidebar';
 import { useChatSidebarController } from './features/chat/hooks/useChatSidebarController';
 import { loadProject } from './persistence/local';
-import { createInitialStore, getNodeById, redo, setTool, undo } from './state/store';
+import { resolveProjectId, setProjectIdInUrl } from './persistence/project-id';
+import { loadRemoteProject, RemoteProjectNotFoundError } from './persistence/remote';
+import { createInitialStore, getNodeById, redo, replaceProjectNoHistory, setTool, undo } from './state/store';
 import { useCanvasGenerationController } from './hooks/useCanvasGenerationController';
 import { usePreventBrowserZoom } from './hooks/usePreventBrowserZoom';
 import { useCanvasWorkspaceController } from './hooks/useCanvasWorkspaceController';
@@ -33,7 +35,9 @@ function getSelectedNode(state: CanvasStoreState) {
 }
 
 function App() {
+  const [projectId] = useState(() => resolveProjectId());
   const [state, setState] = useState<CanvasStoreState>(() => createInitialStore(loadProject()));
+  const [isRemoteProjectLoadSettled, setIsRemoteProjectLoadSettled] = useState(false);
   const [isAssetSidebarOpen, setIsAssetSidebarOpen] = useState(true);
   const [isAgentSidebarOpen, setIsAgentSidebarOpen] = useState(true);
   const [isCanvasInteractionActive, setIsCanvasInteractionActive] = useState(false);
@@ -75,9 +79,50 @@ function App() {
     dissolveSelectedGroup,
     exportProjectJson,
   } = useCanvasWorkspaceController({
+    projectId,
+    remoteSaveEnabled: isRemoteProjectLoadSettled,
+    onRemoteSaveSuccess: setProjectIdInUrl,
     state,
     setState,
   });
+
+  useEffect(() => {
+    let isActive = true;
+    const abortController = new AbortController();
+
+    async function hydrateRemoteProject() {
+      try {
+        const result = await loadRemoteProject(projectId, { signal: abortController.signal });
+        if (!isActive) {
+          return;
+        }
+
+        setState((prev) => replaceProjectNoHistory(prev, result.project as CanvasStoreState['project']));
+      } catch (error) {
+        if (error instanceof RemoteProjectNotFoundError) {
+          console.info('[web/project-persistence] remote project not found; local cache will seed on next save', {
+            projectId,
+          });
+        } else {
+          console.warn('[web/project-persistence] remote project load failed; using local cache', {
+            projectId,
+            error,
+          });
+        }
+      } finally {
+        if (isActive) {
+          setIsRemoteProjectLoadSettled(true);
+        }
+      }
+    }
+
+    void hydrateRemoteProject();
+
+    return () => {
+      isActive = false;
+      abortController.abort();
+    };
+  }, [projectId]);
 
   const { handleUpload, insertAsset, applyAgentEffects } = useCanvasGenerationController({
     selectedId: state.selectedId,
@@ -91,6 +136,7 @@ function App() {
     setChatInput,
     currentTask,
     streamingAssistantMessage,
+    streamingEffects,
     sessionCount,
     sessionHistory,
     voiceComposer,
@@ -101,6 +147,7 @@ function App() {
     submitChatMessage,
     handleSuggestion,
   } = useChatSidebarController({
+    projectId,
     project: state.project,
     selectedNode,
     setState,
@@ -225,6 +272,7 @@ function App() {
               activeSession={activeSession}
               currentTask={currentTask}
               streamingAssistantMessage={streamingAssistantMessage}
+              streamingEffects={streamingEffects}
               chatInput={chatInput}
               composerStatusText={composerStatusText}
               voiceButtonLabel={voiceButtonLabel}

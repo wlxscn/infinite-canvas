@@ -181,6 +181,10 @@ function deriveStatus({
     return 'generating';
   }
 
+  if (latestEffect?.type === 'start-generation' || latestEffect?.type === 'style-variation') {
+    return 'generating';
+  }
+
   if (chatStatus === 'submitted') {
     return 'thinking';
   }
@@ -235,12 +239,14 @@ function buildSummary({
   intent,
   status,
   latestAssistantMessage,
+  latestEffect,
   matchingJob,
   chatError,
 }: {
   intent: DerivedTaskIntent;
   status: DerivedTaskStatus;
   latestAssistantMessage: ChatMessage | null;
+  latestEffect: AgentEffect | null;
   matchingJob: GenerationJob | null;
   chatError: Error | null;
 }): string {
@@ -250,6 +256,15 @@ function buildSummary({
 
   if (status === 'generating' && matchingJob?.prompt) {
     return `正在根据当前方向执行生成：${matchingJob.prompt}`;
+  }
+
+  if (
+    status === 'generating' &&
+    latestEffect &&
+    (latestEffect.type === 'start-generation' || latestEffect.type === 'style-variation') &&
+    latestEffect.prompt
+  ) {
+    return `正在根据当前方向执行生成：${latestEffect.prompt}`;
   }
 
   if (status === 'thinking') {
@@ -434,6 +449,7 @@ export function deriveCurrentTask({
       intent,
       status,
       latestAssistantMessage,
+      latestEffect,
       matchingJob,
       chatError,
     }),

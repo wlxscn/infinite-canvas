@@ -86,30 +86,26 @@ async function decideTool({ llmGateway, toolRunnerService, message, canvasContex
 
     return {
       toolCall: result.toolCalls?.[0] ?? null,
+      assistantText: result.assistantText?.trim() ?? '',
       providerState: {
         provider: result.provider,
         responseId: result.providerResponseId ?? null,
       },
     };
   } catch (error) {
-    console.warn('[agent-api/orchestrator] tool decision failed, falling back to local preview', {
+    console.warn('[agent-api/orchestrator] tool decision failed', {
       message: error instanceof Error ? error.message : String(error),
     });
 
     return {
       toolCall: null,
+      assistantText: '',
       providerState: null,
     };
   }
 }
 
 async function runTool({ toolRunnerService, message, canvasContext, toolCall }) {
-  if (!toolCall) {
-    return {
-      plan: await toolRunnerService.preview({ message, canvasContext }),
-    };
-  }
-
   return {
     plan: await toolRunnerService.executeToolCall({
       name: toolCall.name,
@@ -142,12 +138,41 @@ export function createOpenAiService({ llmGateway = createLlmGateway() } = {}) {
         request?.messages?.[request.messages.length - 1]?.parts?.find((part) => part.type === 'text')?.text ??
         '';
       const canvasContext = request?.canvasContext ?? null;
-      const { toolCall, providerState } = await decideTool({
+      const { toolCall, assistantText, providerState } = await decideTool({
         llmGateway,
         toolRunnerService,
         message,
         canvasContext,
       });
+
+      if (!toolCall && assistantText) {
+        return {
+          message,
+          canvasContext,
+          conversationId: conversationState.conversationId,
+          previousResponseId: conversationState.responseId,
+          providerState: providerState ?? conversationState.providerState,
+          directText: assistantText,
+          suggestions: [],
+          effects: [],
+          deferredGenerationEffect: null,
+        };
+      }
+
+      if (!toolCall) {
+        return {
+          message,
+          canvasContext,
+          conversationId: conversationState.conversationId,
+          previousResponseId: conversationState.responseId,
+          providerState: providerState ?? conversationState.providerState,
+          directText: '我暂时不能直接执行这个请求，但可以继续回答你的问题。',
+          suggestions: [],
+          effects: [],
+          deferredGenerationEffect: null,
+        };
+      }
+
       const { plan } = await runTool({
         toolRunnerService,
         message,
@@ -179,6 +204,11 @@ export function createOpenAiService({ llmGateway = createLlmGateway() } = {}) {
       };
     },
     async streamPreparedResponse({ prepared, onTextDelta }) {
+      if (prepared.directText) {
+        onTextDelta?.(prepared.directText);
+        return prepared.directText;
+      }
+
       const result = await llmGateway.stream({
         messages: [
           { role: 'system', content: prepared.prompt.system },

@@ -7,6 +7,7 @@ import { handleTranscriptionRoute } from './routes/transcription.mjs';
 import { handleMiniMaxTestRoute } from './routes/minimax-test.mjs';
 import { handleImageGenerationRoute } from './routes/image-generation.mjs';
 import { handleVideoGenerationRoute } from './routes/video-generation.mjs';
+import { handleProjectRoute, matchProjectRoute } from './routes/project.mjs';
 
 export function createApp() {
   return createServer(async (request, response) => {
@@ -17,7 +18,7 @@ export function createApp() {
     response.setHeader('access-control-allow-origin', allowOrigin);
     response.setHeader('vary', 'Origin');
     response.setHeader('access-control-allow-headers', 'content-type, accept');
-    response.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS');
+    response.setHeader('access-control-allow-methods', 'GET,POST,PUT,OPTIONS');
     response.setHeader(
       'access-control-expose-headers',
       ['content-type', ...Object.keys(UI_MESSAGE_STREAM_HEADERS)].join(', '),
@@ -38,6 +39,14 @@ export function createApp() {
     if (request.method === 'GET' && request.url === '/health') {
       handleHealthRoute(response);
       return;
+    }
+
+    const projectRoute = matchProjectRoute(request);
+    if (projectRoute) {
+      const handled = await handleProjectRoute(request, response, projectRoute.projectId);
+      if (handled) {
+        return;
+      }
     }
 
     if (request.method === 'POST' && request.url === '/chat') {

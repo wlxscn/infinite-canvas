@@ -333,13 +333,11 @@ export function useCanvasGenerationController({
 
       if (effect.type === 'style-variation') {
         setPrompt(effect.prompt);
-        void startMockGeneration(effect.prompt, effect.mediaType ?? 'image');
         return;
       }
 
       if (effect.type === 'start-generation') {
         setPrompt(effect.prompt);
-        void startMockGeneration(effect.prompt, effect.mediaType ?? 'image');
       }
     });
   }

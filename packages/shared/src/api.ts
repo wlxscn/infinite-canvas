@@ -24,6 +24,36 @@ export interface AgentChatResponse {
   effects: AgentEffect[];
 }
 
+export interface CanvasProjectSnapshot {
+  version: 2;
+  board: unknown;
+  assets: unknown[];
+  jobs: unknown[];
+  chat: {
+    activeSessionId: string | null;
+    sessions: unknown[];
+  };
+}
+
+export interface ProjectPersistenceMetadata {
+  projectId: string;
+  createdAt?: string;
+  updatedAt?: string;
+  ownerId?: string | null;
+}
+
+export interface ProjectLoadResponse extends ProjectPersistenceMetadata {
+  project: CanvasProjectSnapshot;
+}
+
+export interface ProjectSaveRequest {
+  project: CanvasProjectSnapshot;
+}
+
+export interface ProjectSaveResponse extends ProjectPersistenceMetadata {
+  project: CanvasProjectSnapshot;
+}
+
 export type TranscriptionAudioMimeType =
   | 'audio/m4a'
   | 'audio/mp3'

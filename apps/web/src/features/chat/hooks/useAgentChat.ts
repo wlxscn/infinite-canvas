@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import type { AgentChatRequest } from '@infinite-canvas/shared/api';
@@ -28,6 +28,8 @@ interface UseAgentChatOptions {
 export function useAgentChat({ initialMessages, onResponseData, onAssistantFinish, onError }: UseAgentChatOptions) {
   const pendingTargetSessionIdRef = useRef<string | null>(null);
   const latestResponseDataRef = useRef<ReturnType<typeof extractAgentResponseData> | null>(null);
+  const [isRequestInFlight, setIsRequestInFlight] = useState(false);
+  const [streamingResponseData, setStreamingResponseData] = useState<ReturnType<typeof extractAgentResponseData> | null>(null);
   const transport = useMemo(
     () =>
       new DefaultChatTransport<AgentUIMessage>({
@@ -44,7 +46,15 @@ export function useAgentChat({ initialMessages, onResponseData, onAssistantFinis
         return;
       }
 
-      latestResponseDataRef.current = dataPart.data;
+      const nextResponseData = {
+        suggestions: [...(latestResponseDataRef.current?.suggestions ?? []), ...(dataPart.data?.suggestions ?? [])],
+        effects: [...(latestResponseDataRef.current?.effects ?? []), ...(dataPart.data?.effects ?? [])],
+        conversationId: dataPart.data?.conversationId ?? latestResponseDataRef.current?.conversationId,
+        previousResponseId: dataPart.data?.previousResponseId ?? latestResponseDataRef.current?.previousResponseId,
+      };
+
+      latestResponseDataRef.current = nextResponseData;
+      setStreamingResponseData(nextResponseData);
       logChat('transport:data-agentResponse', {
         suggestionCount: dataPart.data?.suggestions.length ?? 0,
         effectCount: dataPart.data?.effects.length ?? 0,
@@ -59,14 +69,20 @@ export function useAgentChat({ initialMessages, onResponseData, onAssistantFinis
     },
     onError(error) {
       logChat('transport:error', { message: error.message });
+      setIsRequestInFlight(false);
+      const targetSessionId = pendingTargetSessionIdRef.current;
+      latestResponseDataRef.current = null;
+      setStreamingResponseData(null);
+      pendingTargetSessionIdRef.current = null;
       onError?.({
         error,
-        targetSessionId: pendingTargetSessionIdRef.current,
+        targetSessionId,
       });
     },
     onFinish({ message }) {
       const responseData = extractAgentResponseData(message) ?? latestResponseDataRef.current;
       const localMessage = toLocalChatMessage(message);
+      const targetSessionId = pendingTargetSessionIdRef.current;
 
       logChat('transport:finish', {
         messageId: message.id,
@@ -81,14 +97,16 @@ export function useAgentChat({ initialMessages, onResponseData, onAssistantFinis
       onAssistantFinish({
         message: localMessage,
         responseData,
-        targetSessionId: pendingTargetSessionIdRef.current,
+        targetSessionId,
       });
-      latestResponseDataRef.current = null;
-      pendingTargetSessionIdRef.current = null;
     },
   });
 
   const streamingAssistantMessage = useMemo(() => {
+    if (!isRequestInFlight || (chat.status !== 'submitted' && chat.status !== 'streaming')) {
+      return null;
+    }
+
     const latestMessage = [...chat.messages].reverse().find((message) => message.role === 'assistant');
     if (!latestMessage) {
       return null;
@@ -99,11 +117,18 @@ export function useAgentChat({ initialMessages, onResponseData, onAssistantFinis
       return null;
     }
 
-    return localMessage;
-  }, [chat.messages]);
+    return {
+      ...localMessage,
+      suggestions: streamingResponseData?.suggestions ?? localMessage.suggestions,
+      effects: streamingResponseData?.effects ?? localMessage.effects ?? [],
+    };
+  }, [chat.messages, chat.status, isRequestInFlight, streamingResponseData]);
 
   async function sendAgentMessage(message: string, request: AgentChatRequest, targetSessionId: string | null) {
+    setIsRequestInFlight(true);
     pendingTargetSessionIdRef.current = targetSessionId;
+    latestResponseDataRef.current = null;
+    setStreamingResponseData(null);
     logChat('transport:send', {
       api: getAgentChatApiUrl(),
       message,
@@ -112,16 +137,23 @@ export function useAgentChat({ initialMessages, onResponseData, onAssistantFinis
       historyCount: request.history?.length ?? 0,
     });
 
-    await chat.sendMessage(
-      { text: message },
-      {
-        body: request,
-      },
-    );
+    try {
+      await chat.sendMessage(
+        { text: message },
+        {
+          body: request,
+        },
+      );
 
-    logChat('transport:send:resolved', {
-      message,
-    });
+      logChat('transport:send:resolved', {
+        message,
+      });
+    } finally {
+      setIsRequestInFlight(false);
+      latestResponseDataRef.current = null;
+      setStreamingResponseData(null);
+      pendingTargetSessionIdRef.current = null;
+    }
   }
 
   return {

@@ -33,6 +33,8 @@ export function getEnv() {
     minimaxVideoResolution: process.env.MINIMAX_VIDEO_RESOLUTION ?? '1080P',
     minimaxVideoPollIntervalMs: Number.parseInt(process.env.MINIMAX_VIDEO_POLL_INTERVAL_MS ?? '10000', 10),
     minimaxVideoTimeoutMs: Number.parseInt(process.env.MINIMAX_VIDEO_TIMEOUT_MS ?? '600000', 10),
+    supabaseUrl: process.env.SUPABASE_URL ?? '',
+    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
     corsOrigins: (process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://127.0.0.1:5173')
       .split(',')
       .map((origin) => origin.trim())

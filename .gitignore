@@ -11,8 +11,13 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
 test-results
 package-lock.json
+
+# Local Codex/agent skill installs
+.agents/
+skills-lock.json
 
 # Editor directories and files
 .vscode/*

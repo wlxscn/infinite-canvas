@@ -19,6 +19,7 @@ import {
   undo,
   wrapNodesInNewGroup,
 } from '../state/store';
+import { saveRemoteProject } from '../persistence/remote';
 import { useCanvasKeyboardShortcuts } from './useCanvasKeyboardShortcuts';
 import type { CanvasProject, CanvasStoreState } from '../types/canvas';
 
@@ -30,16 +31,42 @@ function triggerDownload(filename: string, href: string): void {
 }
 
 interface UseCanvasWorkspaceControllerOptions {
+  projectId: string;
+  remoteSaveEnabled: boolean;
+  onRemoteSaveSuccess?: (projectId: string) => void;
   state: CanvasStoreState;
   setState: React.Dispatch<React.SetStateAction<CanvasStoreState>>;
 }
 
-export function useCanvasWorkspaceController({ state, setState }: UseCanvasWorkspaceControllerOptions) {
+export function useCanvasWorkspaceController({
+  projectId,
+  remoteSaveEnabled,
+  onRemoteSaveSuccess,
+  state,
+  setState,
+}: UseCanvasWorkspaceControllerOptions) {
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const latestProjectRef = useRef(state.project);
   const latestSelectedIdRef = useRef(state.selectedId);
   const latestSelectedIdsRef = useRef(state.selectedIds);
   const deferredSaveRef = useRef(createDeferredProjectSaver());
+  const deferredRemoteSaveRef = useRef(
+    createDeferredProjectSaver({
+      delayMs: 500,
+      save(project) {
+        void saveRemoteProject(projectId, project)
+          .then(() => {
+            onRemoteSaveSuccess?.(projectId);
+          })
+          .catch((error) => {
+            console.warn('[web/project-persistence] remote project save failed; local cache remains current', {
+              projectId,
+              error,
+            });
+          });
+      },
+    }),
+  );
 
   useEffect(() => {
     latestProjectRef.current = state.project;
@@ -55,14 +82,26 @@ export function useCanvasWorkspaceController({ state, setState }: UseCanvasWorks
 
   useEffect(() => {
     deferredSaveRef.current.schedule(state.project);
-  }, [state.project]);
+    if (remoteSaveEnabled) {
+      deferredRemoteSaveRef.current.schedule(state.project);
+    }
+  }, [remoteSaveEnabled, state.project]);
 
-  useEffect(() => () => deferredSaveRef.current.cancel(), []);
+  useEffect(
+    () => () => {
+      deferredSaveRef.current.cancel();
+      deferredRemoteSaveRef.current.cancel();
+    },
+    [],
+  );
 
   useCanvasKeyboardShortcuts({
     onSpacePressedChange: setIsSpacePressed,
     onSave: () => {
       deferredSaveRef.current.flush(latestProjectRef.current);
+      if (remoteSaveEnabled) {
+        deferredRemoteSaveRef.current.flush(latestProjectRef.current);
+      }
     },
     onResetZoom: () => {
       setState((prev) =>

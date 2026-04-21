@@ -57,6 +57,7 @@ export function createMiniMaxAdapter({ env, fetchImpl = globalThis.fetch }) {
         temperature,
         toolCount: tools?.length ?? 0,
         messages: summarizeMessages(messages),
+        requestPayload,
       });
 
       try {
@@ -71,10 +72,22 @@ export function createMiniMaxAdapter({ env, fetchImpl = globalThis.fetch }) {
         });
 
         if (response.ok) {
-          return await response.json();
+          const data = await response.json();
+          console.log('[agent-api/llm/minimax] completion:response', {
+            attempt: attempt + 1,
+            status: response.status,
+            body: data,
+          });
+
+          return data;
         }
 
         const body = await response.text();
+        console.warn('[agent-api/llm/minimax] completion:error-response', {
+          attempt: attempt + 1,
+          status: response.status,
+          body,
+        });
         if (RETRYABLE_STATUS_CODES.has(response.status) && attempt < retries) {
           await sleep(getRetryDelay(attempt));
           continue;
@@ -197,6 +210,8 @@ export function createMiniMaxAdapter({ env, fetchImpl = globalThis.fetch }) {
         url: `${env.minimaxBaseUrl}/chat/completions`,
         model,
         temperature,
+        messages: summarizeMessages(messages),
+        requestPayload,
       });
 
       try {
@@ -212,6 +227,10 @@ export function createMiniMaxAdapter({ env, fetchImpl = globalThis.fetch }) {
 
         if (!response.ok || !response.body) {
           const body = await response.text();
+          console.warn('[agent-api/llm/minimax] stream:error-response', {
+            status: response.status,
+            body,
+          });
           if (fallbackText) {
             onEvent?.({ type: LLM_STREAM_EVENT_TYPES.TEXT_START });
             onEvent?.({ type: LLM_STREAM_EVENT_TYPES.TEXT_DELTA, text: fallbackText });
@@ -254,6 +273,11 @@ export function createMiniMaxAdapter({ env, fetchImpl = globalThis.fetch }) {
         if (!emittedText && fallbackText) {
           onEvent?.({ type: LLM_STREAM_EVENT_TYPES.TEXT_DELTA, text: fallbackText });
         }
+
+        console.log('[agent-api/llm/minimax] stream:response', {
+          status: response.status,
+          text: finalText,
+        });
 
         onEvent?.({ type: LLM_STREAM_EVENT_TYPES.TEXT_END });
         onEvent?.({ type: LLM_STREAM_EVENT_TYPES.DONE });

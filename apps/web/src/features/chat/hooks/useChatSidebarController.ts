@@ -24,10 +24,12 @@ function makeUserMessage(text: string): ChatMessage {
     text,
     createdAt: Date.now(),
     suggestions: [],
+    effects: [],
   };
 }
 
 interface UseChatSidebarControllerOptions {
+  projectId: string;
   project: CanvasProject;
   selectedNode: CanvasNode | null;
   setState: Dispatch<SetStateAction<CanvasStoreState>>;
@@ -36,6 +38,7 @@ interface UseChatSidebarControllerOptions {
 }
 
 export function useChatSidebarController({
+  projectId,
   project,
   selectedNode,
   setState,
@@ -81,6 +84,37 @@ export function useChatSidebarController({
             previousResponseId: responseData?.previousResponseId ?? prev[targetSessionId]?.previousResponseId,
           },
         }));
+
+        setState((prev) =>
+          replaceProjectNoHistory(
+            prev,
+            updateSessionById(prev.project, targetSessionId, (session) => {
+              let didUpdateAssistant = false;
+              const messages = [...session.messages]
+                .reverse()
+                .map((message) => {
+                  if (didUpdateAssistant || message.role !== 'assistant') {
+                    return message;
+                  }
+
+                  didUpdateAssistant = true;
+                  return {
+                    ...message,
+                    suggestions: [...(message.suggestions ?? []), ...(responseData?.suggestions ?? [])],
+                    effects: [...(message.effects ?? []), ...(responseData?.effects ?? [])],
+                  };
+                })
+                .reverse();
+
+              return {
+                ...session,
+                messages,
+                conversationId: responseData?.conversationId ?? session.conversationId,
+                previousResponseId: responseData?.previousResponseId ?? session.previousResponseId,
+              };
+            }),
+          ),
+        );
       }
 
       if (responseData?.effects?.length) {
@@ -105,6 +139,7 @@ export function useChatSidebarController({
                 ...appendMessagesToSession(session, {
                   ...message,
                   suggestions: responseData?.suggestions ?? message.suggestions,
+                  effects: responseData?.effects ?? message.effects ?? [],
                 }),
                 title:
                   session.title === '新会话' && session.messages.length === 0 && message.text.trim().length > 0
@@ -124,10 +159,17 @@ export function useChatSidebarController({
         }));
       }
     },
-    onError({ error }) {
+    onError({ error, targetSessionId }) {
       logSidebarChat('assistant:error', {
         message: error.message,
       });
+
+      if (targetSessionId) {
+        setLatestResponseDataBySession((prev) => ({
+          ...prev,
+          [targetSessionId]: null,
+        }));
+      }
     },
   });
 
@@ -158,6 +200,41 @@ export function useChatSidebarController({
       }),
     [activeSession, agentChat.error, agentChat.status, latestResponseDataBySession, project.jobs],
   );
+  const streamingEffects = useMemo(
+    () => (activeSession ? (latestResponseDataBySession[activeSession.id]?.effects ?? []) : []),
+    [activeSession, latestResponseDataBySession],
+  );
+  const streamingAssistantMessage = useMemo<ChatMessage | null>(() => {
+    if (!activeSession || !currentTask) {
+      return agentChat.streamingAssistantMessage;
+    }
+
+    if (agentChat.streamingAssistantMessage) {
+      return {
+        ...agentChat.streamingAssistantMessage,
+        effects:
+          agentChat.streamingAssistantMessage.effects && agentChat.streamingAssistantMessage.effects.length > 0
+            ? agentChat.streamingAssistantMessage.effects
+            : streamingEffects,
+      };
+    }
+
+    if (
+      streamingEffects.length > 0 &&
+      (currentTask.status === 'thinking' || currentTask.status === 'responding' || currentTask.status === 'generating')
+    ) {
+      return {
+        id: `streaming-${activeSession.id}`,
+        role: 'assistant',
+        text: currentTask.summary,
+        createdAt: currentTask.latestUserMessage?.createdAt ?? activeSession.updatedAt,
+        suggestions: currentTask.nextActions,
+        effects: streamingEffects,
+      };
+    }
+
+    return null;
+  }, [activeSession, agentChat.streamingAssistantMessage, currentTask, streamingEffects]);
 
   const sessionHistory = useMemo(
     () => deriveSessionHistoryEntries(project.chat.sessions, project.chat.activeSessionId),
@@ -205,7 +282,7 @@ export function useChatSidebarController({
     const isNewSession = !currentActiveSession;
     const existingMessages = session.messages;
     const request: AgentChatRequest = {
-      projectId: 'local-project',
+      projectId,
       conversationId: session.conversationId,
       previousResponseId: session.previousResponseId ?? undefined,
       message: trimmed,
@@ -287,7 +364,8 @@ export function useChatSidebarController({
     chatInput,
     setChatInput,
     currentTask,
-    streamingAssistantMessage: agentChat.streamingAssistantMessage,
+    streamingAssistantMessage,
+    streamingEffects,
     sessionCount: project.chat.sessions.length,
     sessionHistory,
     voiceComposer,

@@ -137,9 +137,6 @@ export function createToolRunnerService() {
     listTools() {
       return TOOL_DEFINITIONS;
     },
-    async preview({ message, canvasContext }) {
-      return previewFallback({ message, canvasContext });
-    },
     async executeToolCall({ name, rawArguments, message, canvasContext }) {
       const handler = toolHandlers[name];
       if (!handler) {

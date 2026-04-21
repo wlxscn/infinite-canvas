@@ -1,3 +1,5 @@
+import type { AgentEffect } from './tool-effects';
+
 export type ChatRole = 'user' | 'assistant';
 
 export type ChatSuggestionAction = 'add-text' | 'change-style' | 'generate-variants';
@@ -14,4 +16,5 @@ export interface ChatMessage {
   text: string;
   createdAt: number;
   suggestions: ChatSuggestion[];
+  effects?: AgentEffect[];
 }

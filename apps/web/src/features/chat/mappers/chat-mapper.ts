@@ -40,6 +40,7 @@ export function toLocalChatMessage(message: AgentUIMessage): ChatMessage {
     text,
     createdAt: Date.now(),
     suggestions: responseData?.suggestions ?? [],
+    effects: responseData?.effects ?? [],
   };
 }
 

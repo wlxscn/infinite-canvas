@@ -331,7 +331,6 @@ body {
 .video-overlay-item {
   position: absolute;
   overflow: hidden;
-  border-radius: 12px;
   background: #111827;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
   transition: box-shadow 120ms ease;
@@ -1472,6 +1471,85 @@ body {
   flex-wrap: wrap;
 }
 
+.chat-message-media-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  width: 100%;
+  min-width: 240px;
+}
+
+.chat-message-media-card {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.chat-message-media {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  border-radius: 18px;
+  border: 1px solid rgba(24, 24, 27, 0.08);
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 10px 24px rgba(24, 24, 27, 0.08);
+}
+
+.chat-message-media-card figcaption {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #7b7467;
+}
+
+.chat-message-media-placeholder {
+  position: relative;
+  width: 100%;
+  min-height: 180px;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(196, 142, 34, 0.14);
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.8), transparent 48%),
+    linear-gradient(135deg, rgba(247, 222, 178, 0.72), rgba(237, 196, 120, 0.26));
+}
+
+.chat-message-media-placeholder-video {
+  min-height: 140px;
+  aspect-ratio: 16 / 9;
+}
+
+.chat-message-media-placeholder-label {
+  position: absolute;
+  left: 14px;
+  bottom: 12px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(36, 31, 25, 0.72);
+  color: #fff7ed;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.chat-message-media-placeholder-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 12%, rgba(255, 255, 255, 0.5) 28%, transparent 44%);
+  transform: translateX(-100%);
+  animation: chatMediaPlaceholderShimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes chatMediaPlaceholderShimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.chat-message-user .chat-message-media {
+  border-color: rgba(255, 247, 237, 0.12);
+  background: rgba(255, 247, 237, 0.08);
+}
+
 .chat-suggestion-btn {
   background: rgba(255, 248, 238, 0.98);
   border: 1px solid rgba(196, 142, 34, 0.18);
@@ -1486,7 +1564,6 @@ body {
   margin-top: auto;
   padding-top: 10px;
   padding-bottom: 2px;
-  border-top: 1px solid rgba(24, 24, 27, 0.08);
   background: linear-gradient(180deg, rgba(251, 247, 241, 0) 0%, rgba(251, 247, 241, 0.98) 18%);
   position: sticky;
   bottom: 0;

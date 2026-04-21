@@ -4,15 +4,17 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/server.mjs",
+    "dev": "node --env-file-if-exists=../../.env --watch src/server.mjs",
+    "dev:debug": "node --inspect=127.0.0.1:9230 --env-file-if-exists=../../.env --watch src/server.mjs",
     "build": "node scripts/verify.mjs",
     "lint": "node scripts/verify.mjs",
     "test": "node --test \"src/**/*.test.mjs\"",
-    "start": "node src/server.mjs"
+    "start": "node --env-file-if-exists=../../.env src/server.mjs"
   },
   "dependencies": {
     "@langchain/core": "^1.1.39",
     "@langchain/langgraph": "^1.2.8",
+    "@supabase/supabase-js": "^2.104.0",
     "ai": "^6.0.158",
     "zod": "^4.3.6"
   }

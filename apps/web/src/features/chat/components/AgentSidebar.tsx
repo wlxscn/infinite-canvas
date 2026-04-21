@@ -7,6 +7,7 @@ import { MarkdownMessageBody } from './MarkdownMessageBody';
 import { PlainTextMessageBody } from './PlainTextMessageBody';
 import { useTypewriterText } from '../hooks/useTypewriterText';
 import type { VoiceComposerStatus } from '../hooks/useVoiceComposer';
+import type { AgentEffect } from '@infinite-canvas/shared/tool-effects';
 
 interface VoiceComposerViewModel {
   status: VoiceComposerStatus;
@@ -23,6 +24,7 @@ interface AgentSidebarProps {
   activeSession: ChatSession | null;
   currentTask: DerivedCurrentTask | null;
   streamingAssistantMessage: ChatSession['messages'][number] | null;
+  streamingEffects: AgentEffect[];
   chatInput: string;
   composerStatusText: string;
   voiceButtonLabel: string;
@@ -45,6 +47,7 @@ export function AgentSidebar({
   activeSession,
   currentTask,
   streamingAssistantMessage,
+  streamingEffects,
   chatInput,
   composerStatusText,
   voiceButtonLabel,
@@ -69,6 +72,8 @@ export function AgentSidebar({
         }
       : null,
   );
+  const isActiveStreamingTask =
+    currentTask?.status === 'thinking' || currentTask?.status === 'responding' || currentTask?.status === 'generating';
 
   useEffect(() => {
     if (!chatThreadRef.current || !displayedStreamingText) {
@@ -79,6 +84,7 @@ export function AgentSidebar({
   }, [chatThreadRef, displayedStreamingText]);
 
   const shouldRenderStreamingAssistant =
+    isActiveStreamingTask &&
     !!streamingAssistantMessage &&
     (
       !latestPersistedAssistantMessage ||
@@ -89,6 +95,7 @@ export function AgentSidebar({
     );
 
   const shouldUseTypewriterForPersistedMessage =
+    isActiveStreamingTask &&
     !!streamingAssistantMessage &&
     !!latestPersistedAssistantMessage &&
     latestPersistedAssistantMessage.id === streamingAssistantMessage.id &&
@@ -134,6 +141,68 @@ export function AgentSidebar({
     return <PlainTextMessageBody text={message.text} />;
   }
 
+  function renderMessageMedia(messageEffects: AgentEffect[] = []) {
+    const mediaEffects = messageEffects.filter(
+      (effect): effect is Extract<AgentEffect, { type: 'insert-image' | 'insert-video' }> =>
+        effect.type === 'insert-image' || effect.type === 'insert-video',
+    );
+
+    const pendingMediaEffect = messageEffects.find(
+      (effect): effect is Extract<AgentEffect, { type: 'start-generation' | 'style-variation' }> =>
+        effect.type === 'start-generation' ||
+        (effect.type === 'style-variation' && (effect.mediaType ?? 'image') === 'image') ||
+        (effect.type === 'style-variation' && effect.mediaType === 'video'),
+    );
+
+    const pendingMediaType = pendingMediaEffect?.mediaType ?? 'image';
+
+    if (!mediaEffects.length && !pendingMediaEffect) {
+      return null;
+    }
+
+    return (
+      <div className="chat-message-media-list">
+        {mediaEffects.map((effect, index) =>
+          effect.type === 'insert-image' ? (
+            <figure key={`${effect.type}-${effect.imageUrl}-${index}`} className="chat-message-media-card">
+              <img
+                className="chat-message-media"
+                src={effect.imageUrl}
+                alt={effect.prompt || '生成图片'}
+                loading="lazy"
+              />
+              {effect.prompt ? <figcaption>{effect.prompt}</figcaption> : null}
+            </figure>
+          ) : (
+            <figure key={`${effect.type}-${effect.videoUrl}-${index}`} className="chat-message-media-card">
+              <video
+                className="chat-message-media"
+                src={effect.videoUrl}
+                poster={effect.posterUrl ?? undefined}
+                controls
+                playsInline
+                preload="metadata"
+              />
+              {effect.prompt ? <figcaption>{effect.prompt}</figcaption> : null}
+            </figure>
+          ),
+        )}
+        {!mediaEffects.length && pendingMediaEffect ? (
+          <div
+            className={
+              pendingMediaType === 'video'
+                ? 'chat-message-media-placeholder chat-message-media-placeholder-video'
+                : 'chat-message-media-placeholder'
+            }
+            aria-hidden="true"
+          >
+            <div className="chat-message-media-placeholder-shimmer" />
+            <span className="chat-message-media-placeholder-label">生成中</span>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
   return (
     <aside
       id="agent-sidebar"
@@ -207,6 +276,7 @@ export function AgentSidebar({
                   <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
                 </div>
                 {renderMessageBody(message)}
+                {message.role === 'assistant' ? renderMessageMedia(message.effects) : null}
                 {message.role === 'assistant' ? renderSuggestionChips(message.suggestions) : null}
               </article>
             ))}
@@ -217,6 +287,7 @@ export function AgentSidebar({
                   <span>{currentTask?.statusLabel ?? '回复中'}</span>
                 </div>
                 <PlainTextMessageBody text={displayedStreamingText} />
+                {renderMessageMedia(streamingAssistantMessage.effects)}
               </article>
             ) : currentTask && (currentTask.status === 'thinking' || currentTask.status === 'responding' || currentTask.status === 'generating') ? (
               <article className="chat-message chat-message-assistant chat-message-pending" aria-live="polite">
@@ -225,6 +296,7 @@ export function AgentSidebar({
                   <span>{currentTask.statusLabel}</span>
                 </div>
                 <PlainTextMessageBody text={currentTask.summary} />
+                {renderMessageMedia(streamingEffects)}
               </article>
             ) : null}
           </div>

@@ -65,7 +65,8 @@ export function createMiniMaxService() {
         model: env.minimaxImageModel,
         aspectRatio: requestPayload.aspect_ratio,
         promptLength: prompt.length,
-        prompt: prompt
+        prompt: prompt,
+        requestPayload,
       });
 
       try {
@@ -89,6 +90,10 @@ export function createMiniMaxService() {
         }
 
         const payload = await response.json();
+        console.log('[agent-api/minimax] image:response', {
+          status: response.status,
+          body: payload,
+        });
         const imageUrl = payload?.data?.image_urls?.[0] ?? null;
 
         console.log('[agent-api/minimax] image:success', {
@@ -171,6 +176,7 @@ export function createMiniMaxService() {
         resolution: requestPayload.resolution,
         promptLength: prompt.length,
         prompt,
+        requestPayload,
       });
 
       const createController = new AbortController();
@@ -197,6 +203,10 @@ export function createMiniMaxService() {
         }
 
         const createPayload = await createResponse.json();
+        console.log('[agent-api/minimax] video:create-response', {
+          status: createResponse.status,
+          body: createPayload,
+        });
         const taskId = createPayload?.task_id ?? null;
 
         console.log('[agent-api/minimax] video:task-created', {
@@ -247,6 +257,11 @@ export function createMiniMaxService() {
             }
 
             statusPayload = await statusResponse.json();
+            console.log('[agent-api/minimax] video:status-response', {
+              taskId,
+              statusCode: statusResponse.status,
+              body: statusPayload,
+            });
             const status = String(statusPayload?.status ?? '').toLowerCase();
 
             console.log('[agent-api/minimax] video:status', {
@@ -315,6 +330,12 @@ export function createMiniMaxService() {
           }
 
           const filePayload = await fileResponse.json();
+          console.log('[agent-api/minimax] video:file-response', {
+            taskId,
+            fileId,
+            statusCode: fileResponse.status,
+            body: filePayload,
+          });
           const videoUrl = normalizeDownloadUrl(filePayload?.file?.download_url ?? null);
 
           if (!videoUrl) {

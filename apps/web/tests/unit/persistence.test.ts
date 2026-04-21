@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCanvasRenderRuntime } from '@infinite-canvas/canvas-engine';
 import { createDeferredProjectSaver, loadProject, saveProject, STORAGE_KEY } from '../../src/persistence/local';
+import { getProjectIdFromUrl, PROJECT_ID_STORAGE_KEY, resolveProjectId, setProjectIdInUrl } from '../../src/persistence/project-id';
+import { loadRemoteProject, RemoteProjectNotFoundError, saveRemoteProject } from '../../src/persistence/remote';
 import { createEmptyProject } from '../../src/state/store';
 
 describe('project persistence', () => {
@@ -257,5 +259,121 @@ describe('project persistence', () => {
     expect(save).toHaveBeenCalledTimes(1);
 
     vi.useRealTimers();
+  });
+
+  it('creates and reuses a stable backend project id', () => {
+    const projectId = resolveProjectId();
+
+    expect(projectId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(localStorage.getItem(PROJECT_ID_STORAGE_KEY)).toBe(projectId);
+    expect(resolveProjectId()).toBe(projectId);
+  });
+
+  it('prefers project ids from the current URL and stores them locally', () => {
+    const location = new URL('https://example.com/canvas?projectId=11111111-1111-4111-8111-111111111111') as unknown as Location;
+
+    const projectId = resolveProjectId(localStorage, location);
+
+    expect(projectId).toBe('11111111-1111-4111-8111-111111111111');
+    expect(localStorage.getItem(PROJECT_ID_STORAGE_KEY)).toBe(projectId);
+  });
+
+  it('can attach a saved project id to the current URL', () => {
+    const replaceState = vi.fn();
+    const history = { state: { current: true }, replaceState } as unknown as History;
+    const location = new URL('https://example.com/canvas?view=board#top') as unknown as Location;
+
+    setProjectIdInUrl('11111111-1111-4111-8111-111111111111', history, location);
+
+    expect(replaceState).toHaveBeenCalledWith(
+      { current: true },
+      '',
+      '/canvas?view=board&projectId=11111111-1111-4111-8111-111111111111#top',
+    );
+  });
+
+  it('ignores invalid project ids in the current URL', () => {
+    const location = new URL('https://example.com/canvas?projectId=local-project') as unknown as Location;
+
+    expect(getProjectIdFromUrl(location)).toBeNull();
+  });
+
+  it('replaces invalid stored project ids', () => {
+    localStorage.setItem(PROJECT_ID_STORAGE_KEY, 'local-project');
+
+    const projectId = resolveProjectId();
+
+    expect(projectId).not.toBe('local-project');
+    expect(projectId).toMatch(/^[0-9a-f-]{36}$/i);
+  });
+
+  it('loads remote projects from the project endpoint beside chat', async () => {
+    const project = createEmptyProject();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ projectId: '11111111-1111-4111-8111-111111111111', project }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await loadRemoteProject('11111111-1111-4111-8111-111111111111');
+
+    expect(response.project).toEqual(project);
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:8787/projects/11111111-1111-4111-8111-111111111111', {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+      signal: undefined,
+    });
+  });
+
+  it('deduplicates in-flight remote project loads for the same project id', async () => {
+    const project = createEmptyProject();
+    let resolveFetch: (response: Response) => void = () => undefined;
+    const fetchPromise = new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    });
+    const fetchMock = vi.fn().mockReturnValue(fetchPromise);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = loadRemoteProject('11111111-1111-4111-8111-111111111111');
+    const second = loadRemoteProject('11111111-1111-4111-8111-111111111111');
+
+    expect(first).toBe(second);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    resolveFetch(
+      new Response(JSON.stringify({ projectId: '11111111-1111-4111-8111-111111111111', project }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    await expect(first).resolves.toEqual({ projectId: '11111111-1111-4111-8111-111111111111', project });
+  });
+
+  it('maps missing remote projects to a recoverable not-found error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'not found' }), { status: 404 })));
+
+    await expect(loadRemoteProject('11111111-1111-4111-8111-111111111111')).rejects.toBeInstanceOf(RemoteProjectNotFoundError);
+  });
+
+  it('saves remote projects without affecting local fallback behavior', async () => {
+    const project = createEmptyProject();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ projectId: '11111111-1111-4111-8111-111111111111', project }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await saveRemoteProject('11111111-1111-4111-8111-111111111111', project);
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(init.body as string)).toEqual({ project });
   });
 });
