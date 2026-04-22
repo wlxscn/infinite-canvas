@@ -172,6 +172,30 @@ function getMinOpposingBend(distance: number): number {
   return Math.min(Math.max(distance * 0.1, 18), 34);
 }
 
+function getCurveExitLength(distance: number): number {
+  if (distance <= 180) {
+    return Math.min(Math.max(distance * 0.16, 16), 34);
+  }
+
+  if (distance <= 360) {
+    return Math.min(Math.max(distance * 0.14, 20), 42);
+  }
+
+  return Math.min(Math.max(distance * 0.1, 22), 48);
+}
+
+function getCurveHandleLength(distance: number): number {
+  if (distance <= 180) {
+    return Math.min(Math.max(distance * 0.34, 40), 88);
+  }
+
+  if (distance <= 360) {
+    return Math.min(Math.max(distance * 0.3, 54), 118);
+  }
+
+  return Math.min(Math.max(distance * 0.24, 72), 136);
+}
+
 function getConnectorCurveBezierControls(
   node: ConnectorNode,
   board: BoardDoc,
@@ -191,8 +215,8 @@ function getConnectorCurveBezierControls(
     y: bend.y - midpoint.y,
   };
   const distance = Math.hypot(points.end.x - points.start.x, points.end.y - points.start.y) || 1;
-  const exitLength = Math.min(Math.max(distance * 0.22, 28), 84);
-  const handleLength = Math.min(Math.max(distance * 0.28, 42), 140);
+  const exitLength = getCurveExitLength(distance);
+  const handleLength = getCurveHandleLength(distance);
   const startDirection = getEndpointCurveDirection(node.start, points.start, points.end);
   const endDirection = getEndpointCurveDirection(node.end, points.end, points.start);
   const startExit = {
@@ -240,12 +264,12 @@ function getConnectorCurveBezierControls(
   return {
     startExit,
     control1: {
-      x: startExit.x + startDirection.x * handleLength + enforcedExitBendOffset.x * 0.9,
-      y: startExit.y + startDirection.y * handleLength + enforcedExitBendOffset.y * 0.9,
+      x: startExit.x + startDirection.x * handleLength + enforcedExitBendOffset.x,
+      y: startExit.y + startDirection.y * handleLength + enforcedExitBendOffset.y,
     },
     control2: {
-      x: endExit.x + endDirection.x * handleLength + enforcedExitBendOffset.x * 0.9,
-      y: endExit.y + endDirection.y * handleLength + enforcedExitBendOffset.y * 0.9,
+      x: endExit.x + endDirection.x * handleLength + enforcedExitBendOffset.x,
+      y: endExit.y + endDirection.y * handleLength + enforcedExitBendOffset.y,
     },
     endExit,
   };

@@ -2277,7 +2277,8 @@ describe('canvas engine', () => {
     expect(curvedConnector.curveControl).toBeTruthy();
     const curvedPath = resolveConnectorPathPoints(curvedConnector, createdProject.board);
     expect(curvedPath).toBeTruthy();
-    expect(curvedPath?.[1].x).toBeGreaterThan((curvedPath?.[0].x ?? 0) + 20);
+    expect(curvedPath?.[1].x).toBeGreaterThan((curvedPath?.[0].x ?? 0) + 12);
+    expect(curvedPath?.[1].x).toBeLessThan((curvedPath?.[0].x ?? 0) + 44);
     expect(Math.abs((curvedPath?.[1].y ?? 0) - (curvedPath?.[0].y ?? 0))).toBeLessThan(0.001);
     expect(Math.min(...(curvedPath ?? []).map((point) => point.y))).toBeLessThan(80);
 
