@@ -2311,4 +2311,56 @@ describe('canvas engine', () => {
     controller.dispose();
     editController.dispose();
   });
+
+  it('keeps opposing anchor curves visibly bent at medium distances', () => {
+    const connector: CanvasNode = {
+      id: 'connector_curve_opposing',
+      type: 'connector',
+      start: {
+        kind: 'attached',
+        nodeId: 'node_rect_a',
+        anchor: 'east',
+      },
+      end: {
+        kind: 'attached',
+        nodeId: 'node_rect_b',
+        anchor: 'west',
+      },
+      pathMode: 'curve',
+      curveControl: { x: 230, y: 70 },
+      stroke: '#c44e1c',
+      width: 2,
+    };
+    const board = {
+      version: 2 as const,
+      viewport: { tx: 0, ty: 0, scale: 1 },
+      nodes: [
+        {
+          id: 'node_rect_a',
+          type: 'rect' as const,
+          x: 40,
+          y: 40,
+          w: 120,
+          h: 80,
+          stroke: '#000',
+        },
+        {
+          id: 'node_rect_b',
+          type: 'rect' as const,
+          x: 300,
+          y: 60,
+          w: 140,
+          h: 100,
+          stroke: '#000',
+        },
+        connector,
+      ],
+    };
+
+    const points = resolveConnectorPathPoints(connector, board);
+    expect(points).toBeTruthy();
+    const yValues = (points ?? []).map((point) => point.y);
+    const maxBend = Math.min(...yValues);
+    expect(maxBend).toBeLessThan(72);
+  });
 });

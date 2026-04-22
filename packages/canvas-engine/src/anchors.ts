@@ -93,6 +93,31 @@ function getEndpointCurveDirection(endpoint: ConnectorEndpoint, point: Point, op
   });
 }
 
+function getOpposingAnchorOrientation(
+  start: ConnectorEndpoint,
+  end: ConnectorEndpoint,
+): 'horizontal' | 'vertical' | null {
+  if (start.kind !== 'attached' || end.kind !== 'attached') {
+    return null;
+  }
+
+  if (
+    (start.anchor === 'east' && end.anchor === 'west') ||
+    (start.anchor === 'west' && end.anchor === 'east')
+  ) {
+    return 'horizontal';
+  }
+
+  if (
+    (start.anchor === 'north' && end.anchor === 'south') ||
+    (start.anchor === 'south' && end.anchor === 'north')
+  ) {
+    return 'vertical';
+  }
+
+  return null;
+}
+
 export function getConnectorCurveControlHandle(node: ConnectorNode, board: BoardDoc): Point | null {
   if (getConnectorPathMode(node) !== 'curve') {
     return null;
@@ -170,20 +195,45 @@ function getConnectorCurveBezierControls(
     x: (startExit.x + endExit.x) / 2,
     y: (startExit.y + endExit.y) / 2,
   };
+  const defaultBend = getDefaultConnectorCurveControl(
+    points.start,
+    points.end,
+    node.start.kind === 'attached' ? node.start.anchor : undefined,
+  );
   const exitBendOffset = {
     x: bend.x - exitMidpoint.x,
     y: bend.y - exitMidpoint.y,
   };
+  const orientation = getOpposingAnchorOrientation(node.start, node.end);
+  const minOpposingBend = Math.min(Math.max(distance * 0.18, 24), 56);
+  const enforcedExitBendOffset =
+    orientation === 'horizontal'
+      ? {
+          x: exitBendOffset.x,
+          y:
+            Math.abs(exitBendOffset.y) >= minOpposingBend
+              ? exitBendOffset.y
+              : Math.sign(exitBendOffset.y || defaultBend.y - midpoint.y || -1) * minOpposingBend,
+        }
+      : orientation === 'vertical'
+        ? {
+            x:
+              Math.abs(exitBendOffset.x) >= minOpposingBend
+                ? exitBendOffset.x
+                : Math.sign(exitBendOffset.x || defaultBend.x - midpoint.x || -1) * minOpposingBend,
+            y: exitBendOffset.y,
+          }
+        : exitBendOffset;
 
   return {
     startExit,
     control1: {
-      x: startExit.x + startDirection.x * handleLength + exitBendOffset.x * 0.9,
-      y: startExit.y + startDirection.y * handleLength + exitBendOffset.y * 0.9,
+      x: startExit.x + startDirection.x * handleLength + enforcedExitBendOffset.x * 0.9,
+      y: startExit.y + startDirection.y * handleLength + enforcedExitBendOffset.y * 0.9,
     },
     control2: {
-      x: endExit.x + endDirection.x * handleLength + exitBendOffset.x * 0.9,
-      y: endExit.y + endDirection.y * handleLength + exitBendOffset.y * 0.9,
+      x: endExit.x + endDirection.x * handleLength + enforcedExitBendOffset.x * 0.9,
+      y: endExit.y + endDirection.y * handleLength + enforcedExitBendOffset.y * 0.9,
     },
     endExit,
   };
