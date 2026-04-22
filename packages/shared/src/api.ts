@@ -37,14 +37,29 @@ export interface CanvasProjectSnapshot {
 
 export interface ProjectPersistenceMetadata {
   projectId: string;
+  title: string;
   createdAt?: string;
   updatedAt?: string;
   ownerId?: string | null;
 }
 
+export interface ProjectSummary extends ProjectPersistenceMetadata {
+  lastOpenedAt?: string;
+}
+
+export interface ProjectListResponse {
+  projects: ProjectSummary[];
+}
+
 export interface ProjectLoadResponse extends ProjectPersistenceMetadata {
   project: CanvasProjectSnapshot;
 }
+
+export interface ProjectCreateRequest {
+  title?: string;
+}
+
+export interface ProjectCreateResponse extends ProjectLoadResponse {}
 
 export interface ProjectSaveRequest {
   project: CanvasProjectSnapshot;
@@ -53,6 +68,12 @@ export interface ProjectSaveRequest {
 export interface ProjectSaveResponse extends ProjectPersistenceMetadata {
   project: CanvasProjectSnapshot;
 }
+
+export interface ProjectRenameRequest {
+  title: string;
+}
+
+export interface ProjectRenameResponse extends ProjectSummary {}
 
 export type TranscriptionAudioMimeType =
   | 'audio/m4a'

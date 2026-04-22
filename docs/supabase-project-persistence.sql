@@ -1,10 +1,21 @@
 create table if not exists public.projects (
   id uuid primary key,
   owner_id uuid null,
+  title text not null default '未命名画布',
   data jsonb not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.projects
+  add column if not exists title text not null default '未命名画布';
+
+update public.projects
+set title = '未命名画布'
+where coalesce(trim(title), '') = '';
+
+alter table public.projects
+  enable row level security;
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -24,3 +35,4 @@ for each row
 execute function public.set_updated_at();
 
 create index if not exists projects_updated_at_idx on public.projects (updated_at desc);
+create index if not exists projects_title_idx on public.projects (title);

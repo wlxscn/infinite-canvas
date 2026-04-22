@@ -1,9 +1,17 @@
+import type { ProjectSummary } from '@infinite-canvas/shared/api';
+
 interface WorkspaceHeaderProps {
+  projectTitle: string;
+  activeProjectId: string;
+  projects: ProjectSummary[];
   nodeCountText: string;
   scaleText: string;
   isAgentSidebarOpen: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  onCreateProject: () => void;
+  onSwitchProject: (projectId: string) => void;
+  onRenameProject: (title: string) => void;
   onToggleSidebar: () => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -11,16 +19,31 @@ interface WorkspaceHeaderProps {
 }
 
 export function WorkspaceHeader({
+  projectTitle,
+  activeProjectId,
+  projects,
   nodeCountText,
   scaleText,
   isAgentSidebarOpen,
   canUndo,
   canRedo,
+  onCreateProject,
+  onSwitchProject,
+  onRenameProject,
   onToggleSidebar,
   onUndo,
   onRedo,
   onExport,
 }: WorkspaceHeaderProps) {
+  function handleRenameProject(): void {
+    const nextTitle = window.prompt('输入新的画布标题', projectTitle);
+    if (typeof nextTitle !== 'string') {
+      return;
+    }
+
+    onRenameProject(nextTitle);
+  }
+
   return (
     <header className="floating-header">
       <div className="header-cluster">
@@ -28,14 +51,36 @@ export function WorkspaceHeader({
           IC
         </button>
         <div className="header-title">
-          <strong>Infinite Canvas</strong>
-          <span>生成画面，然后在右侧持续迭代</span>
+          <strong>{projectTitle}</strong>
+          <span>管理多张画布，并在右侧持续迭代</span>
         </div>
+        <button className="ghost-btn" type="button" onClick={onCreateProject}>
+          新建画布
+        </button>
+        <details className="project-switcher">
+          <summary className="ghost-btn">最近画布</summary>
+          <div className="project-switcher-menu">
+            {projects.map((project) => (
+              <button
+                key={project.projectId}
+                className={`project-switcher-item${project.projectId === activeProjectId ? ' project-switcher-item-active' : ''}`}
+                type="button"
+                onClick={() => onSwitchProject(project.projectId)}
+              >
+                <strong>{project.title}</strong>
+                <span>{project.projectId === activeProjectId ? '当前画布' : '切换到此画布'}</span>
+              </button>
+            ))}
+          </div>
+        </details>
       </div>
 
       <div className="header-cluster header-actions">
         <span className="status-pill">{nodeCountText}</span>
         <span className="status-pill">{scaleText}</span>
+        <button className="ghost-btn" type="button" onClick={handleRenameProject}>
+          重命名
+        </button>
         <button className="ghost-btn" type="button" onClick={onToggleSidebar} aria-expanded={isAgentSidebarOpen} aria-controls="agent-sidebar">
           {isAgentSidebarOpen ? '收起对话' : '展开对话'}
         </button>

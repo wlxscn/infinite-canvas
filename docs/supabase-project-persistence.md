@@ -2,6 +2,13 @@
 
 The first backend persistence layer stores complete `CanvasProject` snapshots in Supabase Postgres. Chat sessions remain project-scoped inside `project.chat.sessions[]`; this is not a global conversation history.
 
+The `projects` table also stores lightweight project metadata used by canvas management:
+
+- `title`
+- `created_at`
+- `updated_at`
+- `owner_id`
+
 ## Setup
 
 1. Create the `projects` table by running [supabase-project-persistence.sql](./supabase-project-persistence.sql) in the Supabase SQL editor.
@@ -18,15 +25,21 @@ The service role key must stay on the backend. The browser calls `agent-api`; it
 
 ```text
 apps/web
-  -> apps/agent-api /projects/:projectId
-  -> Supabase public.projects.data
+  -> apps/agent-api /projects and /projects/:projectId
+  -> Supabase public.projects.title + public.projects.data
 ```
 
 The frontend creates a stable browser-local project id and uses it for:
 
 - `GET /projects/:projectId`
 - `PUT /projects/:projectId`
+- `PATCH /projects/:projectId`
 - `/chat` request metadata
+
+The backend canvas-management layer can also:
+
+- `GET /projects`
+- `POST /projects`
 
 ## Local Fallback
 

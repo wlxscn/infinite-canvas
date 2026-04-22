@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createDeferredProjectSaver } from '../persistence/local';
+import { createDeferredProjectSaver, saveProject } from '../persistence/local';
 import {
   canExitActiveGroup,
   bringNodeForward,
@@ -49,7 +49,13 @@ export function useCanvasWorkspaceController({
   const latestProjectRef = useRef(state.project);
   const latestSelectedIdRef = useRef(state.selectedId);
   const latestSelectedIdsRef = useRef(state.selectedIds);
-  const deferredSaveRef = useRef(createDeferredProjectSaver());
+  const deferredSaveRef = useRef(
+    createDeferredProjectSaver({
+      save(project) {
+        saveProject(project, projectId);
+      },
+    }),
+  );
   const deferredRemoteSaveRef = useRef(
     createDeferredProjectSaver({
       delayMs: 500,
@@ -67,6 +73,31 @@ export function useCanvasWorkspaceController({
       },
     }),
   );
+
+  useEffect(() => {
+    deferredSaveRef.current.cancel();
+    deferredRemoteSaveRef.current.cancel();
+    deferredSaveRef.current = createDeferredProjectSaver({
+      save(project) {
+        saveProject(project, projectId);
+      },
+    });
+    deferredRemoteSaveRef.current = createDeferredProjectSaver({
+      delayMs: 500,
+      save(project) {
+        void saveRemoteProject(projectId, project)
+          .then(() => {
+            onRemoteSaveSuccess?.(projectId);
+          })
+          .catch((error) => {
+            console.warn('[web/project-persistence] remote project save failed; local cache remains current', {
+              projectId,
+              error,
+            });
+          });
+      },
+    });
+  }, [onRemoteSaveSuccess, projectId]);
 
   useEffect(() => {
     latestProjectRef.current = state.project;

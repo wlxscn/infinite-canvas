@@ -64,7 +64,7 @@ test('project controller returns stored project snapshots', async () => {
     projectPersistenceService: {
       async getProject(projectId) {
         assert.equal(projectId, PROJECT_ID);
-        return { projectId, project, updatedAt: '2026-04-21T00:00:00.000Z' };
+        return { projectId, title: '海报方案', project, updatedAt: '2026-04-21T00:00:00.000Z' };
       },
     },
   });
@@ -75,9 +75,57 @@ test('project controller returns stored project snapshots', async () => {
   assert.equal(response.statusCode, 200);
   assert.deepEqual(parseBody(response), {
     projectId: PROJECT_ID,
+    title: '海报方案',
     project,
     updatedAt: '2026-04-21T00:00:00.000Z',
   });
+});
+
+test('project controller lists project summaries', async () => {
+  const controller = createProjectController({
+    projectPersistenceService: {
+      async listProjects() {
+        return {
+          projects: [
+            {
+              projectId: PROJECT_ID,
+              title: '海报方案',
+              updatedAt: '2026-04-21T00:00:00.000Z',
+            },
+          ],
+        };
+      },
+    },
+  });
+  const response = createMockResponse();
+
+  await controller.listProjects({}, response);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(parseBody(response).projects[0].title, '海报方案');
+});
+
+test('project controller creates projects', async () => {
+  const project = createProject();
+  const controller = createProjectController({
+    projectPersistenceService: {
+      async createProject(payload) {
+        assert.deepEqual(payload, { title: '新的画布' });
+        return {
+          projectId: PROJECT_ID,
+          title: '新的画布',
+          project,
+          createdAt: '2026-04-21T00:00:00.000Z',
+        };
+      },
+    },
+  });
+  const response = createMockResponse();
+
+  await controller.createProject(createJsonRequest({ title: '新的画布' }), response);
+
+  assert.equal(response.statusCode, 201);
+  assert.equal(parseBody(response).title, '新的画布');
 });
 
 test('project controller saves project payloads', async () => {
@@ -87,7 +135,7 @@ test('project controller saves project payloads', async () => {
       async saveProject(projectId, payload) {
         assert.equal(projectId, PROJECT_ID);
         assert.deepEqual(payload, project);
-        return { projectId, project: payload, updatedAt: '2026-04-21T00:01:00.000Z' };
+        return { projectId, title: '未命名画布', project: payload, updatedAt: '2026-04-21T00:01:00.000Z' };
       },
     },
   });
@@ -97,6 +145,24 @@ test('project controller saves project payloads', async () => {
 
   assert.equal(response.statusCode, 200);
   assert.equal(parseBody(response).updatedAt, '2026-04-21T00:01:00.000Z');
+});
+
+test('project controller renames project metadata', async () => {
+  const controller = createProjectController({
+    projectPersistenceService: {
+      async renameProject(projectId, title) {
+        assert.equal(projectId, PROJECT_ID);
+        assert.equal(title, '重命名后');
+        return { projectId, title, updatedAt: '2026-04-21T00:02:00.000Z' };
+      },
+    },
+  });
+  const response = createMockResponse();
+
+  await controller.renameProject(createJsonRequest({ title: '重命名后' }), response, PROJECT_ID);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(parseBody(response).title, '重命名后');
 });
 
 test('project controller maps not-found errors to 404', async () => {

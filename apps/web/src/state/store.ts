@@ -112,6 +112,18 @@ export function replaceProjectNoHistory(state: CanvasStoreState, project: Canvas
   };
 }
 
+export function switchProject(state: CanvasStoreState, project: CanvasProject): CanvasStoreState {
+  return {
+    ...state,
+    project,
+    selectedId: null,
+    selectedIds: [],
+    activeGroupId: null,
+    past: [],
+    future: [],
+  };
+}
+
 export function commitProject(state: CanvasStoreState, nextProject: CanvasProject): CanvasStoreState {
   if (projectsEqual(state.project, nextProject)) {
     return state;

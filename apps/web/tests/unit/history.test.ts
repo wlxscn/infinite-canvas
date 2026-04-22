@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { commitProject, createEmptyProject, createInitialStore, finalizeMutation, redo, replaceProjectNoHistory, undo } from '../../src/state/store';
+import { commitProject, createEmptyProject, createInitialStore, finalizeMutation, redo, replaceProjectNoHistory, switchProject, undo } from '../../src/state/store';
 
 describe('history stack', () => {
   it('supports undo and redo for board nodes', () => {
@@ -107,5 +107,43 @@ describe('history stack', () => {
     state = undo(state);
     expect(state.project.board.nodes[0].x).toBe(0);
     expect(state.future).toHaveLength(1);
+  });
+
+  it('resets transient editor state when switching projects', () => {
+    const base = createEmptyProject();
+    const nextProject = {
+      ...base,
+      board: {
+        ...base.board,
+        nodes: [
+          {
+            id: 'node_rect_1',
+            type: 'rect' as const,
+            x: 24,
+            y: 18,
+            w: 80,
+            h: 40,
+            stroke: '#000',
+          },
+        ],
+      },
+    };
+
+    let state = createInitialStore(base);
+    state = commitProject(state, nextProject);
+    state = {
+      ...state,
+      selectedId: 'node_rect_1',
+      selectedIds: ['node_rect_1'],
+      activeGroupId: 'group_1',
+    };
+
+    state = switchProject(state, createEmptyProject());
+
+    expect(state.selectedId).toBeNull();
+    expect(state.selectedIds).toEqual([]);
+    expect(state.activeGroupId).toBeNull();
+    expect(state.past).toEqual([]);
+    expect(state.future).toEqual([]);
   });
 });

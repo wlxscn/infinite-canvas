@@ -18,7 +18,7 @@ export function createApp() {
     response.setHeader('access-control-allow-origin', allowOrigin);
     response.setHeader('vary', 'Origin');
     response.setHeader('access-control-allow-headers', 'content-type, accept');
-    response.setHeader('access-control-allow-methods', 'GET,POST,PUT,OPTIONS');
+    response.setHeader('access-control-allow-methods', 'GET,POST,PUT,PATCH,OPTIONS');
     response.setHeader(
       'access-control-expose-headers',
       ['content-type', ...Object.keys(UI_MESSAGE_STREAM_HEADERS)].join(', '),

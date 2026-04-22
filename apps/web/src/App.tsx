@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ProjectSummary } from '@infinite-canvas/shared/api';
 import { CanvasStage } from './canvas/CanvasStage';
 import { AssetsPanel } from './components/AssetsPanel';
 import { CanvasHero } from './components/CanvasHero';
@@ -10,10 +11,24 @@ import { WorkspaceHeader } from './components/WorkspaceHeader';
 import { buildCanvasContext } from './features/chat/buildCanvasContext';
 import { AgentSidebar } from './features/chat/components/AgentSidebar';
 import { useChatSidebarController } from './features/chat/hooks/useChatSidebarController';
-import { loadProject } from './persistence/local';
-import { resolveProjectId, setProjectIdInUrl } from './persistence/project-id';
-import { loadRemoteProject, RemoteProjectNotFoundError } from './persistence/remote';
-import { createInitialStore, getNodeById, redo, replaceProjectNoHistory, setTool, undo } from './state/store';
+import { loadProject, saveProject } from './persistence/local';
+import {
+  createProjectSummary,
+  DEFAULT_PROJECT_TITLE,
+  loadRecentProjectSummaries,
+  mergeProjectSummaries,
+  normalizeProjectTitle,
+  saveRecentProjectSummaries,
+} from './persistence/project-management';
+import { createProjectId, resolveProjectId, setProjectIdInUrl, storeProjectId } from './persistence/project-id';
+import {
+  createRemoteProject,
+  loadRemoteProject,
+  loadRemoteProjectSummaries,
+  RemoteProjectNotFoundError,
+  renameRemoteProject,
+} from './persistence/remote';
+import { createEmptyProject, createInitialStore, getNodeById, redo, replaceProjectNoHistory, setTool, switchProject, undo } from './state/store';
 import { useCanvasGenerationController } from './hooks/useCanvasGenerationController';
 import { usePreventBrowserZoom } from './hooks/usePreventBrowserZoom';
 import { useCanvasWorkspaceController } from './hooks/useCanvasWorkspaceController';
@@ -35,18 +50,61 @@ function getSelectedNode(state: CanvasStoreState) {
 }
 
 function App() {
-  const [projectId] = useState(() => resolveProjectId());
-  const [state, setState] = useState<CanvasStoreState>(() => createInitialStore(loadProject()));
+  const [projectId, setProjectId] = useState(() => resolveProjectId());
+  const [state, setState] = useState<CanvasStoreState>(() =>
+    createInitialStore(loadProject(resolveProjectId(), { includeLegacyGlobal: true })),
+  );
+  const [projectSummaries, setProjectSummaries] = useState<ProjectSummary[]>(() =>
+    mergeProjectSummaries(loadRecentProjectSummaries(), [createProjectSummary(resolveProjectId())]),
+  );
   const [isRemoteProjectLoadSettled, setIsRemoteProjectLoadSettled] = useState(false);
-  const [isAssetSidebarOpen, setIsAssetSidebarOpen] = useState(true);
-  const [isAgentSidebarOpen, setIsAgentSidebarOpen] = useState(true);
+  const [isAssetSidebarOpen, setIsAssetSidebarOpen] = useState(false);
+  const [isAgentSidebarOpen, setIsAgentSidebarOpen] = useState(false);
   const [isCanvasInteractionActive, setIsCanvasInteractionActive] = useState(false);
   const [connectorPathMode, setConnectorPathMode] = useState<ConnectorPathMode>('straight');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const chatThreadRef = useRef<HTMLDivElement | null>(null);
   const canvasStageWrapRef = useRef<HTMLDivElement | null>(null);
+  const latestProjectSummariesRef = useRef(projectSummaries);
 
   usePreventBrowserZoom();
+
+  useEffect(() => {
+    latestProjectSummariesRef.current = projectSummaries;
+  }, [projectSummaries]);
+
+  const activeProjectSummary = useMemo(
+    () => projectSummaries.find((summary) => summary.projectId === projectId) ?? createProjectSummary(projectId),
+    [projectId, projectSummaries],
+  );
+
+  function updateProjectSummaries(updater: (current: ProjectSummary[]) => ProjectSummary[]): void {
+    setProjectSummaries((prev) => {
+      const next = updater(prev);
+      saveRecentProjectSummaries(next);
+      return next;
+    });
+  }
+
+  function rememberProjectSummary(nextProjectId: string, overrides: Partial<ProjectSummary> = {}): void {
+    const existing = latestProjectSummariesRef.current.find((summary) => summary.projectId === nextProjectId);
+    const summary = createProjectSummary(nextProjectId, {
+      ...existing,
+      ...overrides,
+      lastOpenedAt: new Date().toISOString(),
+    });
+
+    updateProjectSummaries((prev) => mergeProjectSummaries(prev, [summary]));
+  }
+
+  function activateProject(nextProjectId: string, project = loadProject(nextProjectId), overrides: Partial<ProjectSummary> = {}): void {
+    storeProjectId(nextProjectId);
+    setProjectIdInUrl(nextProjectId);
+    rememberProjectSummary(nextProjectId, overrides);
+    setIsRemoteProjectLoadSettled(false);
+    setProjectId(nextProjectId);
+    setState((prev) => switchProject(prev, project));
+  }
 
   const selectedNode = useMemo(() => getSelectedNode(state), [state]);
   const selectedNodes = useMemo(
@@ -88,6 +146,35 @@ function App() {
 
   useEffect(() => {
     let isActive = true;
+
+    async function syncProjectSummaries() {
+      try {
+        const result = await loadRemoteProjectSummaries();
+        if (!isActive) {
+          return;
+        }
+
+        setProjectSummaries((prev) => {
+          const next = mergeProjectSummaries(prev, result.projects);
+          saveRecentProjectSummaries(next);
+          return next;
+        });
+      } catch (error) {
+        console.info('[web/project-management] remote project list unavailable; using local recent projects', {
+          error,
+        });
+      }
+    }
+
+    void syncProjectSummaries();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
     const abortController = new AbortController();
 
     async function hydrateRemoteProject() {
@@ -98,6 +185,14 @@ function App() {
         }
 
         setState((prev) => replaceProjectNoHistory(prev, result.project as CanvasStoreState['project']));
+        setProjectSummaries((prev) => {
+          const next = mergeProjectSummaries(
+            prev,
+            [createProjectSummary(projectId, { ...result, lastOpenedAt: new Date().toISOString() })],
+          );
+          saveRecentProjectSummaries(next);
+          return next;
+        });
       } catch (error) {
         if (error instanceof RemoteProjectNotFoundError) {
           console.info('[web/project-persistence] remote project not found; local cache will seed on next save', {
@@ -163,15 +258,69 @@ function App() {
     chatThreadRef.current.scrollTop = chatThreadRef.current.scrollHeight;
   }, [state.project.chat.activeSessionId, state.project.chat.sessions, streamingAssistantMessage?.text]);
 
+  async function handleCreateProject(): Promise<void> {
+    try {
+      const created = await createRemoteProject(DEFAULT_PROJECT_TITLE);
+      saveProject(created.project as CanvasStoreState['project'], created.projectId);
+      activateProject(created.projectId, created.project as CanvasStoreState['project'], created);
+    } catch (error) {
+      const nextProjectId = createProjectId();
+      const emptyProject = createEmptyProject();
+      saveProject(emptyProject, nextProjectId);
+      activateProject(nextProjectId, emptyProject, { title: DEFAULT_PROJECT_TITLE });
+      console.warn('[web/project-management] remote project creation failed; continuing locally', {
+        projectId: nextProjectId,
+        error,
+      });
+    }
+  }
+
+  function handleSwitchProject(nextProjectId: string): void {
+    if (nextProjectId === projectId) {
+      rememberProjectSummary(nextProjectId, {
+        title: activeProjectSummary.title,
+      });
+      return;
+    }
+
+    const nextSummary = latestProjectSummariesRef.current.find((summary) => summary.projectId === nextProjectId);
+    activateProject(nextProjectId, loadProject(nextProjectId), nextSummary);
+  }
+
+  async function handleRenameProject(title: string): Promise<void> {
+    const normalizedTitle = normalizeProjectTitle(title);
+    rememberProjectSummary(projectId, { title: normalizedTitle });
+
+    try {
+      const summary = await renameRemoteProject(projectId, normalizedTitle);
+      rememberProjectSummary(projectId, summary);
+    } catch (error) {
+      console.warn('[web/project-management] remote project rename failed; keeping local title', {
+        projectId,
+        error,
+      });
+    }
+  }
+
   return (
     <div className="app-shell">
       <div className={`canvas-shell${isCanvasInteractionActive ? ' interaction-active' : ''}`}>
         <WorkspaceHeader
+          projectTitle={activeProjectSummary.title}
+          activeProjectId={projectId}
+          projects={projectSummaries}
           nodeCountText={statsText.nodeCount}
           scaleText={statsText.scaleText}
           isAgentSidebarOpen={isAgentSidebarOpen}
           canUndo={canUndo}
           canRedo={canRedo}
+          onCreateProject={() => {
+            void handleCreateProject();
+          }}
+          onSwitchProject={handleSwitchProject}
+          onRenameProject={(title) => {
+            void handleRenameProject(title);
+          }}
           onToggleSidebar={() => setIsAgentSidebarOpen((prev) => !prev)}
           onUndo={() => setState((prev) => undo(prev))}
           onRedo={() => setState((prev) => redo(prev))}

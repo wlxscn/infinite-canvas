@@ -2,7 +2,7 @@ export const PROJECT_ID_STORAGE_KEY = 'infinite-canvas:project-id';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function createProjectId(): string {
+export function createProjectId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
@@ -39,11 +39,23 @@ export function setProjectIdInUrl(projectId: string, history: History = window.h
   history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
 }
 
+export function storeProjectId(projectId: string, storage: Storage = localStorage): void {
+  if (!isValidProjectId(projectId)) {
+    return;
+  }
+
+  try {
+    storage.setItem(PROJECT_ID_STORAGE_KEY, projectId);
+  } catch {
+    // Ignore storage errors and continue with URL as the source of truth.
+  }
+}
+
 export function resolveProjectId(storage: Storage = localStorage, location: Location = window.location): string {
   try {
     const urlProjectId = getProjectIdFromUrl(location);
     if (urlProjectId) {
-      storage.setItem(PROJECT_ID_STORAGE_KEY, urlProjectId);
+      storeProjectId(urlProjectId, storage);
       return urlProjectId;
     }
 
@@ -53,7 +65,7 @@ export function resolveProjectId(storage: Storage = localStorage, location: Loca
     }
 
     const projectId = createProjectId();
-    storage.setItem(PROJECT_ID_STORAGE_KEY, projectId);
+    storeProjectId(projectId, storage);
     return projectId;
   } catch {
     return createProjectId();

@@ -264,35 +264,44 @@ test('can persist seeded sidebar sessions and local asset interactions after rel
   await page.goto('/');
 
   await expect(page.getByRole('complementary', { name: '素材管理侧栏' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /展开\s*素材管理/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: '展开对话' })).toBeVisible();
+
+  await page.getByRole('button', { name: /展开\s*素材管理/i }).click();
+  await page.getByRole('button', { name: '展开对话' }).click();
+
   await expect(page.getByRole('complementary', { name: 'Agent chat sidebar' })).toBeVisible();
-  await expect(page.getByLabel('当前任务')).toBeVisible();
-  await expect(page.getByRole('heading', { name: '保留这个方向' })).toBeVisible();
+  await expect(page.getByText('主会话')).toBeVisible();
+  await expect(page.getByText('保留这个方向')).toBeVisible();
   await expect(page.getByText(/资产 1/).first()).toBeVisible();
   await expect(page.getByText('先定一张主画面')).toHaveCount(0);
 
   await page.getByRole('button', { name: /Seed image/ }).click();
   await expect(page.getByText(/节点 1/)).toBeVisible();
-  await expect(page.getByRole('heading', { name: '保留这个方向' })).toBeVisible();
+  await expect(page.getByText('保留这个方向')).toBeVisible();
 
-  await page.getByRole('button', { name: '新任务' }).first().click();
-  await expect(page.getByLabel('当前任务')).toBeVisible();
-  await expect(page.getByRole('heading', { name: '新会话' })).toBeVisible();
+  await page.getByRole('button', { name: '新对话' }).first().click();
+  await expect(page.getByText('新会话')).toBeVisible();
+  await page.getByRole('button', { name: '2 个会话' }).click();
   await expect(sessionItems).toHaveCount(1);
   await sessionItems.first().click();
-  await expect(page.getByRole('heading', { name: '保留这个方向' })).toBeVisible();
+  await expect(page.getByText('保留这个方向')).toBeVisible();
   await page.waitForTimeout(250);
 
   await page.reload();
 
+  await page.getByRole('button', { name: '展开对话' }).click();
+
   await expect(page.getByText(/资产 1/).first()).toBeVisible();
-  await expect(sessionItems).toHaveCount(1);
+  await expect(page.getByText('保留这个方向')).toBeVisible();
 });
 
 test('can restore project-scoped sessions from backend project persistence after reload', async ({ page }) => {
   const remoteProject = createSeedProject();
+  const projectId = '11111111-1111-4111-8111-111111111111';
   let saveCount = 0;
 
-  await page.route('**/projects/*', async (route) => {
+  await page.route(`**/projects/${projectId}`, async (route) => {
     const request = route.request();
 
     if (request.method() === 'GET') {
@@ -300,7 +309,7 @@ test('can restore project-scoped sessions from backend project persistence after
         status: 200,
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          projectId: '11111111-1111-4111-8111-111111111111',
+          projectId,
           project: remoteProject,
           updatedAt: '2026-04-21T00:00:00.000Z',
         }),
@@ -314,7 +323,7 @@ test('can restore project-scoped sessions from backend project persistence after
         status: 200,
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          projectId: '11111111-1111-4111-8111-111111111111',
+          projectId,
           project: request.postDataJSON()?.project ?? remoteProject,
           updatedAt: '2026-04-21T00:00:01.000Z',
         }),
@@ -325,7 +334,9 @@ test('can restore project-scoped sessions from backend project persistence after
     await route.fallback();
   });
 
-  await page.goto('/');
+  await page.goto(`/?projectId=${projectId}`);
+
+  await page.getByRole('button', { name: '展开对话' }).click();
 
   await expect(page.getByRole('complementary', { name: 'Agent chat sidebar' })).toBeVisible();
   await expect(page.getByText('主会话')).toBeVisible();
@@ -333,6 +344,8 @@ test('can restore project-scoped sessions from backend project persistence after
   await expect(page.getByText(/资产 1/).first()).toBeVisible();
 
   await page.reload();
+
+  await page.getByRole('button', { name: '展开对话' }).click();
 
   await expect(page.getByText('主会话')).toBeVisible();
   await expect(page.getByText('保留这个方向')).toBeVisible();
@@ -373,20 +386,19 @@ test('chat sidebar shows current task flow and suggestion-driven follow-ups afte
 
   await page.goto('/');
 
+  await page.getByRole('button', { name: '展开对话' }).click();
+
   await page.getByLabel('发送给设计助理').fill('生成一只狗');
   await page.getByRole('button', { name: '发送' }).click();
 
-  await expect(page.getByLabel('当前任务')).toBeVisible();
-  await expect(page.getByRole('heading', { name: '生成一只狗' })).toBeVisible();
-  await expect(page.getByLabel('执行过程')).toBeVisible();
-  await expect(page.getByLabel('下一步')).toBeVisible();
+  await expect(page.getByText('生成一只狗').first()).toBeVisible();
+  await expect(page.getByText('我会先整理一个清晰的执行方向，并给你下一步建议。')).toBeVisible();
   await expect(page.getByRole('button', { name: '继续生成变体' })).toBeVisible();
 
   await page.getByRole('button', { name: '继续生成变体' }).click();
 
-  await expect(page.getByRole('heading', { name: '请继续生成当前设计的系列变体' })).toBeVisible();
-  await expect(page.getByLabel('当前任务').getByText('我会继续围绕当前方向延展两个新变体。')).toBeVisible();
-  await expect(page.getByLabel('下一步')).toHaveCount(0);
+  await expect(page.getByText('请继续生成当前设计的系列变体')).toBeVisible();
+  await expect(page.getByText('我会继续围绕当前方向延展两个新变体。')).toBeVisible();
 });
 
 test('asset sidebar can collapse and expand without hiding the canvas workspace', async ({ page }) => {
@@ -398,11 +410,15 @@ test('asset sidebar can collapse and expand without hiding the canvas workspace'
   await page.goto('/');
 
   await expect(page.getByRole('complementary', { name: '素材管理侧栏' })).toBeVisible();
-  await page.getByRole('button', { name: '收起素材栏' }).click();
-  await expect(page.getByRole('button', { name: /展开/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /展开\s*素材管理/i })).toBeVisible();
   await expect(page.locator('canvas')).toBeVisible();
 
-  await page.getByRole('button', { name: /展开/i }).click();
+  await page.getByRole('button', { name: /展开\s*素材管理/i }).click();
+  await page.getByRole('button', { name: '收起素材栏' }).click();
+  await expect(page.getByRole('button', { name: /展开\s*素材管理/i })).toBeVisible();
+  await expect(page.locator('canvas')).toBeVisible();
+
+  await page.getByRole('button', { name: /展开\s*素材管理/i }).click();
   await expect(page.getByRole('button', { name: '导入参考图' })).toBeVisible();
 });
 
@@ -413,6 +429,9 @@ test('three-column workspace fills the available vertical height', async ({ page
   }, [STORAGE_KEY, createSeedProject()]);
 
   await page.goto('/');
+
+  await page.getByRole('button', { name: /展开\s*素材管理/i }).click();
+  await page.getByRole('button', { name: '展开对话' }).click();
 
   const viewport = page.viewportSize();
   expect(viewport).not.toBeNull();
@@ -454,7 +473,8 @@ test('rulers stay visible and react to selection and zoom changes', async ({ pag
   }, [STORAGE_KEY, createSeedProject()]);
 
   await page.goto('/');
-  await expect(page.getByPlaceholder('继续当前任务，或告诉 agent 如何调整方向')).toBeVisible();
+  await expect(page.getByRole('button', { name: '展开对话' })).toBeVisible();
+  await page.getByRole('button', { name: /展开\s*素材管理/i }).click();
   await page.getByRole('button', { name: /Seed image/ }).click();
   await expect(page.getByText(/节点 1/)).toBeVisible();
   await expect(page.locator('.canvas-ruler-top')).toBeVisible();
@@ -847,15 +867,143 @@ test('marquee selection can select multiple top-level nodes', async ({ page }) =
 test('voice drafts stay editable until the user sends them from the sidebar composer', async ({ page }) => {
   await page.goto('/');
 
+  await page.getByRole('button', { name: '展开对话' }).click();
+
   await expect(page.getByRole('button', { name: '开始录音' })).toBeVisible();
 
   const chatInput = page.getByRole('textbox', { name: '发送给设计助理' });
   await chatInput.fill('保留霓虹配色\n把主标题改成更大胆一点');
-  await expect(page.getByText('暂无任务')).toBeVisible();
+  await expect(chatInput).toHaveValue('保留霓虹配色\n把主标题改成更大胆一点');
 
   await chatInput.fill('保留霓虹配色\n把主标题改成更大胆一点，并增加一行副标题');
   await page.getByRole('button', { name: '发送' }).click();
 
   await expect(page.getByText('保留霓虹配色\n把主标题改成更大胆一点，并增加一行副标题')).toBeVisible();
-  await expect(page.getByText('暂无任务')).toHaveCount(0);
+  await expect(chatInput).toHaveValue('');
+});
+
+test('can create a canvas project, switch to another canvas, and switch back', async ({ page }) => {
+  const firstProjectId = '11111111-1111-4111-8111-111111111111';
+  const secondProjectId = '22222222-2222-4222-8222-222222222222';
+  const createdProjectId = '33333333-3333-4333-8333-333333333333';
+  const remoteProjects = new Map([
+    [firstProjectId, { title: '当前画布', project: createEmptyChatSeedProject() }],
+    [secondProjectId, { title: '第二画布', project: createSeedProject() }],
+  ]);
+
+  await page.route('**/projects', async (route) => {
+    const request = route.request();
+
+    if (request.method() === 'GET') {
+      await route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          projects: [...remoteProjects.entries()].map(([projectId, entry]) => ({
+            projectId,
+            title: entry.title,
+            updatedAt: '2026-04-22T00:00:00.000Z',
+          })),
+        }),
+      });
+      return;
+    }
+
+    if (request.method() === 'POST') {
+      const createdProject = createEmptyChatSeedProject();
+      remoteProjects.set(createdProjectId, {
+        title: '未命名画布',
+        project: createdProject,
+      });
+      await route.fulfill({
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          projectId: createdProjectId,
+          title: '未命名画布',
+          project: createdProject,
+          createdAt: '2026-04-22T00:00:00.000Z',
+          updatedAt: '2026-04-22T00:00:00.000Z',
+        }),
+      });
+      return;
+    }
+
+    await route.fallback();
+  });
+
+  await page.route('**/projects/*', async (route) => {
+    const request = route.request();
+    const projectId = request.url().split('/projects/')[1];
+    const entry = remoteProjects.get(projectId);
+
+    if (!entry) {
+      await route.fulfill({
+        status: 404,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ error: 'not found' }),
+      });
+      return;
+    }
+
+    if (request.method() === 'GET') {
+      await route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          title: entry.title,
+          project: entry.project,
+          updatedAt: '2026-04-22T00:00:00.000Z',
+        }),
+      });
+      return;
+    }
+
+    if (request.method() === 'PUT') {
+      const payload = request.postDataJSON() as { project: ReturnType<typeof createSeedProject> };
+      remoteProjects.set(projectId, {
+        ...entry,
+        project: payload.project,
+      });
+      await route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          title: entry.title,
+          project: payload.project,
+          updatedAt: '2026-04-22T00:00:00.000Z',
+        }),
+      });
+      return;
+    }
+
+    await route.fallback();
+  });
+
+  await page.goto(`/?projectId=${firstProjectId}`);
+
+  await expect(page.locator('.header-title strong')).toHaveText('当前画布');
+
+  await page.getByRole('button', { name: '新建画布' }).click();
+  await expect(page.locator('.header-title strong')).toHaveText('未命名画布');
+
+  await page.getByRole('button', { name: '展开对话' }).click();
+  await page.getByRole('button', { name: '新对话' }).first().click();
+  await expect(page.getByText('新会话')).toBeVisible();
+  await page.waitForTimeout(700);
+
+  await page.locator('.project-switcher').evaluate((node) => {
+    (node as HTMLDetailsElement).open = true;
+  });
+  await page.getByRole('button', { name: '第二画布' }).click();
+  await expect(page.locator('.header-title strong')).toHaveText('第二画布');
+
+  await page.locator('.project-switcher').evaluate((node) => {
+    (node as HTMLDetailsElement).open = true;
+  });
+  await page.locator('.project-switcher-item').filter({ hasText: '未命名画布' }).first().click();
+  await expect(page.locator('.header-title strong')).toHaveText('未命名画布');
+  await expect(page.getByText('新会话')).toBeVisible();
 });

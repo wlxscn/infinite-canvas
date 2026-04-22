@@ -1,8 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCanvasRenderRuntime } from '@infinite-canvas/canvas-engine';
-import { createDeferredProjectSaver, loadProject, saveProject, STORAGE_KEY } from '../../src/persistence/local';
-import { getProjectIdFromUrl, PROJECT_ID_STORAGE_KEY, resolveProjectId, setProjectIdInUrl } from '../../src/persistence/project-id';
-import { loadRemoteProject, RemoteProjectNotFoundError, saveRemoteProject } from '../../src/persistence/remote';
+import { createDeferredProjectSaver, getProjectStorageKey, loadProject, saveProject, STORAGE_KEY } from '../../src/persistence/local';
+import {
+  createProjectSummary,
+  DEFAULT_PROJECT_TITLE,
+  loadRecentProjectSummaries,
+  RECENT_PROJECTS_STORAGE_KEY,
+  upsertRecentProjectSummary,
+} from '../../src/persistence/project-management';
+import {
+  createProjectId,
+  getProjectIdFromUrl,
+  PROJECT_ID_STORAGE_KEY,
+  resolveProjectId,
+  setProjectIdInUrl,
+  storeProjectId,
+} from '../../src/persistence/project-id';
+import {
+  createRemoteProject,
+  loadRemoteProject,
+  loadRemoteProjectSummaries,
+  RemoteProjectNotFoundError,
+  renameRemoteProject,
+  saveRemoteProject,
+} from '../../src/persistence/remote';
 import { createEmptyProject } from '../../src/state/store';
 
 describe('project persistence', () => {
@@ -59,9 +80,9 @@ describe('project persistence', () => {
       type: 'video',
       name: 'motion',
       mimeType: 'video/mp4',
-      src: 'https://example.com/video.mp4',
+      src: 'https://media.example.com/generated/video.mp4',
       frameSrc: 'data:image/jpeg;base64,frame',
-      posterSrc: 'https://example.com/poster.jpg',
+      posterSrc: 'https://media.example.com/generated/poster.jpg',
       width: 1920,
       height: 1080,
       durationSeconds: 12,
@@ -84,7 +105,7 @@ describe('project persistence', () => {
     const loaded = loadProject();
     expect(loaded.assets[0].type).toBe('video');
     expect(loaded.assets[0].frameSrc).toBe('data:image/jpeg;base64,frame');
-    expect(loaded.assets[0].posterSrc).toBe('https://example.com/poster.jpg');
+    expect(loaded.assets[0].posterSrc).toBe('https://media.example.com/generated/poster.jpg');
     expect(loaded.jobs[0].mediaType).toBe('video');
   });
 
@@ -307,13 +328,61 @@ describe('project persistence', () => {
     expect(projectId).toMatch(/^[0-9a-f-]{36}$/i);
   });
 
+  it('stores project ids explicitly when switching projects', () => {
+    const projectId = createProjectId();
+
+    storeProjectId(projectId);
+
+    expect(localStorage.getItem(PROJECT_ID_STORAGE_KEY)).toBe(projectId);
+  });
+
+  it('saves and loads project snapshots per project id', () => {
+    const firstProjectId = '11111111-1111-4111-8111-111111111111';
+    const secondProjectId = '22222222-2222-4222-8222-222222222222';
+    const firstProject = createEmptyProject();
+    const secondProject = createEmptyProject();
+    firstProject.chat.sessions.push({
+      id: 'session_a',
+      title: '项目 A',
+      createdAt: 1,
+      updatedAt: 1,
+      messages: [],
+    });
+    secondProject.chat.sessions.push({
+      id: 'session_b',
+      title: '项目 B',
+      createdAt: 2,
+      updatedAt: 2,
+      messages: [],
+    });
+
+    saveProject(firstProject, firstProjectId);
+    saveProject(secondProject, secondProjectId);
+
+    expect(loadProject(firstProjectId).chat.sessions[0].title).toBe('项目 A');
+    expect(loadProject(secondProjectId).chat.sessions[0].title).toBe('项目 B');
+    expect(localStorage.getItem(getProjectStorageKey(firstProjectId))).toBeTruthy();
+    expect(localStorage.getItem(getProjectStorageKey(secondProjectId))).toBeTruthy();
+  });
+
+  it('keeps a recent-project summary index for local canvas management', () => {
+    const projectId = '11111111-1111-4111-8111-111111111111';
+
+    upsertRecentProjectSummary(createProjectSummary(projectId, { title: '封面草图' }));
+
+    const summaries = loadRecentProjectSummaries();
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0].title).toBe('封面草图');
+    expect(localStorage.getItem(RECENT_PROJECTS_STORAGE_KEY)).toContain(projectId);
+  });
+
   it('loads remote projects from the project endpoint beside chat', async () => {
     const project = createEmptyProject();
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ projectId: '11111111-1111-4111-8111-111111111111', project }), {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ projectId: '11111111-1111-4111-8111-111111111111', title: DEFAULT_PROJECT_TITLE, project }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
-      }),
+      })),
     );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -354,6 +423,46 @@ describe('project persistence', () => {
     await expect(first).resolves.toEqual({ projectId: '11111111-1111-4111-8111-111111111111', project });
   });
 
+  it('does not share abortable remote project loads between StrictMode mounts', async () => {
+    const project = createEmptyProject();
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ projectId: '11111111-1111-4111-8111-111111111111', title: DEFAULT_PROJECT_TITLE, project }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+    const first = loadRemoteProject('11111111-1111-4111-8111-111111111111', { signal: firstController.signal });
+    const second = loadRemoteProject('11111111-1111-4111-8111-111111111111', { signal: secondController.signal });
+
+    expect(first).not.toBe(second);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://127.0.0.1:8787/projects/11111111-1111-4111-8111-111111111111',
+      expect.objectContaining({ signal: firstController.signal }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://127.0.0.1:8787/projects/11111111-1111-4111-8111-111111111111',
+      expect.objectContaining({ signal: secondController.signal }),
+    );
+
+    await expect(first).resolves.toEqual({
+      projectId: '11111111-1111-4111-8111-111111111111',
+      title: DEFAULT_PROJECT_TITLE,
+      project,
+    });
+    await expect(second).resolves.toEqual({
+      projectId: '11111111-1111-4111-8111-111111111111',
+      title: DEFAULT_PROJECT_TITLE,
+      project,
+    });
+  });
+
   it('maps missing remote projects to a recoverable not-found error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'not found' }), { status: 404 })));
 
@@ -363,7 +472,7 @@ describe('project persistence', () => {
   it('saves remote projects without affecting local fallback behavior', async () => {
     const project = createEmptyProject();
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ projectId: '11111111-1111-4111-8111-111111111111', project }), {
+      new Response(JSON.stringify({ projectId: '11111111-1111-4111-8111-111111111111', title: DEFAULT_PROJECT_TITLE, project }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }),
@@ -375,5 +484,77 @@ describe('project persistence', () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.method).toBe('PUT');
     expect(JSON.parse(init.body as string)).toEqual({ project });
+  });
+
+  it('loads remote project summaries from the collection endpoint', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            projects: [
+              {
+                projectId: '11111111-1111-4111-8111-111111111111',
+                title: '海报方案',
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
+      ),
+    );
+
+    const result = await loadRemoteProjectSummaries();
+
+    expect(result.projects[0].title).toBe('海报方案');
+  });
+
+  it('creates remote projects through the collection endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          projectId: '11111111-1111-4111-8111-111111111111',
+          title: '新的画布',
+          project: createEmptyProject(),
+        }),
+        {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await createRemoteProject('新的画布');
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:8787/projects');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ title: '新的画布' });
+  });
+
+  it('renames remote projects through the metadata endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          projectId: '11111111-1111-4111-8111-111111111111',
+          title: '重命名后的画布',
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await renameRemoteProject('11111111-1111-4111-8111-111111111111', '重命名后的画布');
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body as string)).toEqual({ title: '重命名后的画布' });
   });
 });

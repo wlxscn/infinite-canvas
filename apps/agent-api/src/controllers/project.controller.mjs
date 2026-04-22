@@ -73,6 +73,27 @@ async function readJsonBody(request) {
 
 export function createProjectController({ projectPersistenceService = createProjectPersistenceService() } = {}) {
   return {
+    async listProjects(_request, response) {
+      try {
+        const result = await projectPersistenceService.listProjects();
+        writeJson(response, 200, result);
+      } catch (error) {
+        const { statusCode, body } = getErrorPayload(error);
+        writeJson(response, statusCode, body);
+      }
+    },
+
+    async createProject(request, response) {
+      try {
+        const body = await readJsonBody(request);
+        const result = await projectPersistenceService.createProject(body);
+        writeJson(response, 201, result);
+      } catch (error) {
+        const { statusCode, body } = getErrorPayload(error);
+        writeJson(response, statusCode, body);
+      }
+    },
+
     async getProject(request, response, projectId) {
       try {
         const result = await projectPersistenceService.getProject(projectId);
@@ -88,6 +109,17 @@ export function createProjectController({ projectPersistenceService = createProj
         const body = await readJsonBody(request);
         const project = body.project ?? body;
         const result = await projectPersistenceService.saveProject(projectId, project);
+        writeJson(response, 200, result);
+      } catch (error) {
+        const { statusCode, body } = getErrorPayload(error);
+        writeJson(response, statusCode, body);
+      }
+    },
+
+    async renameProject(request, response, projectId) {
+      try {
+        const body = await readJsonBody(request);
+        const result = await projectPersistenceService.renameProject(projectId, body.title);
         writeJson(response, 200, result);
       } catch (error) {
         const { statusCode, body } = getErrorPayload(error);

@@ -3,6 +3,7 @@ import type { AgentEffect } from '@infinite-canvas/shared/tool-effects';
 import type { CanvasNode, CanvasProject, ChatSession, Point } from '../types/canvas';
 
 export const STORAGE_KEY = 'infinite-canvas:v2';
+export const PROJECT_STORAGE_KEY_PREFIX = 'infinite-canvas:v2:project:';
 const LEGACY_STORAGE_KEY = 'infinite-canvas:v1';
 
 interface LegacyRectShape {
@@ -160,14 +161,48 @@ function migrateLegacyDoc(doc: LegacyCanvasDoc): CanvasProject {
   };
 }
 
-export function loadProject(): CanvasProject {
+export function getProjectStorageKey(projectId: string): string {
+  return `${PROJECT_STORAGE_KEY_PREFIX}${projectId}`;
+}
+
+interface LoadProjectOptions {
+  includeLegacyGlobal?: boolean;
+}
+
+function loadPersistedProject(raw: string | null): CanvasProject | null {
+  if (!raw) {
+    return null;
+  }
+
+  const parsed = JSON.parse(raw);
+  if (looksLikeProject(parsed)) {
+    return normalizeProject(parsed);
+  }
+
+  return null;
+}
+
+export function loadProject(projectId?: string, options: LoadProjectOptions = {}): CanvasProject {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (looksLikeProject(parsed)) {
-        return normalizeProject(parsed);
+    if (projectId) {
+      const scopedProject = loadPersistedProject(localStorage.getItem(getProjectStorageKey(projectId)));
+      if (scopedProject) {
+        return scopedProject;
       }
+
+      if (options.includeLegacyGlobal) {
+        const legacyCurrentProject = loadPersistedProject(localStorage.getItem(STORAGE_KEY));
+        if (legacyCurrentProject) {
+          return legacyCurrentProject;
+        }
+      }
+
+      return createEmptyProject();
+    }
+
+    const currentProject = loadPersistedProject(localStorage.getItem(STORAGE_KEY));
+    if (currentProject) {
+      return currentProject;
     }
 
     const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
@@ -184,9 +219,13 @@ export function loadProject(): CanvasProject {
   }
 }
 
-export function saveProject(project: CanvasProject): void {
+export function saveProject(project: CanvasProject, projectId?: string): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
+    const serializedProject = JSON.stringify(project);
+    localStorage.setItem(STORAGE_KEY, serializedProject);
+    if (projectId) {
+      localStorage.setItem(getProjectStorageKey(projectId), serializedProject);
+    }
   } catch {
     // Ignore quota/security errors for local-first behavior.
   }
