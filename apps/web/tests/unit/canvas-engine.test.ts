@@ -566,7 +566,7 @@ describe('canvas engine', () => {
     expect(points?.[0]).toEqual({ x: 40, y: 120 });
     expect(points?.at(-1)).toEqual({ x: 260, y: 120 });
     expect(getCanvasNodeBounds(connector, board).h).toBeGreaterThan(0);
-    expect(hitTestCanvasNode(connector, { x: 150, y: 80 }, 8, board)).toBe(true);
+    expect(hitTestCanvasNode(connector, { x: 150, y: 68 }, 8, board)).toBe(true);
     expect(hitTestCanvasNode(connector, { x: 150, y: 170 }, 4, board)).toBe(false);
   });
 
@@ -2277,6 +2277,8 @@ describe('canvas engine', () => {
     expect(curvedConnector.curveControl).toBeTruthy();
     const curvedPath = resolveConnectorPathPoints(curvedConnector, createdProject.board);
     expect(curvedPath).toBeTruthy();
+    expect(curvedPath?.[1].x).toBeGreaterThan((curvedPath?.[0].x ?? 0) + 20);
+    expect(Math.abs((curvedPath?.[1].y ?? 0) - (curvedPath?.[0].y ?? 0))).toBeLessThan(0.001);
     expect(Math.min(...(curvedPath ?? []).map((point) => point.y))).toBeLessThan(80);
 
     const editController = createController(createdProject, 'draft_connector', 'select');

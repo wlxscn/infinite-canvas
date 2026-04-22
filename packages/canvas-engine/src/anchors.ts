@@ -138,7 +138,7 @@ function sampleCubicCurve(start: Point, control1: Point, control2: Point, end: P
 function getConnectorCurveBezierControls(
   node: ConnectorNode,
   board: BoardDoc,
-): { control1: Point; control2: Point } | null {
+): { startExit: Point; control1: Point; control2: Point; endExit: Point } | null {
   const points = resolveConnectorPoints(node, board);
   const bend = getConnectorCurveControlHandle(node, board);
   if (!points || !bend) {
@@ -154,19 +154,38 @@ function getConnectorCurveBezierControls(
     y: bend.y - midpoint.y,
   };
   const distance = Math.hypot(points.end.x - points.start.x, points.end.y - points.start.y) || 1;
-  const handleLength = Math.min(Math.max(distance * 0.35, 48), 180);
+  const exitLength = Math.min(Math.max(distance * 0.22, 28), 84);
+  const handleLength = Math.min(Math.max(distance * 0.28, 42), 140);
   const startDirection = getEndpointCurveDirection(node.start, points.start, points.end);
   const endDirection = getEndpointCurveDirection(node.end, points.end, points.start);
+  const startExit = {
+    x: points.start.x + startDirection.x * exitLength,
+    y: points.start.y + startDirection.y * exitLength,
+  };
+  const endExit = {
+    x: points.end.x + endDirection.x * exitLength,
+    y: points.end.y + endDirection.y * exitLength,
+  };
+  const exitMidpoint = {
+    x: (startExit.x + endExit.x) / 2,
+    y: (startExit.y + endExit.y) / 2,
+  };
+  const exitBendOffset = {
+    x: bend.x - exitMidpoint.x,
+    y: bend.y - exitMidpoint.y,
+  };
 
   return {
+    startExit,
     control1: {
-      x: points.start.x + startDirection.x * handleLength + bendOffset.x * 0.6,
-      y: points.start.y + startDirection.y * handleLength + bendOffset.y * 0.6,
+      x: startExit.x + startDirection.x * handleLength + exitBendOffset.x * 0.9,
+      y: startExit.y + startDirection.y * handleLength + exitBendOffset.y * 0.9,
     },
     control2: {
-      x: points.end.x + endDirection.x * handleLength + bendOffset.x * 0.6,
-      y: points.end.y + endDirection.y * handleLength + bendOffset.y * 0.6,
+      x: endExit.x + endDirection.x * handleLength + exitBendOffset.x * 0.9,
+      y: endExit.y + endDirection.y * handleLength + exitBendOffset.y * 0.9,
     },
+    endExit,
   };
 }
 
@@ -316,7 +335,13 @@ export function resolveConnectorPathPoints(node: ConnectorNode, board: BoardDoc)
     if (!controls) {
       return [points.start, points.end];
     }
-    return sampleCubicCurve(points.start, controls.control1, controls.control2, points.end);
+    const bendSegment = sampleCubicCurve(
+      controls.startExit,
+      controls.control1,
+      controls.control2,
+      controls.endExit,
+    );
+    return [points.start, controls.startExit, ...bendSegment.slice(1, -1), controls.endExit, points.end];
   }
 
   return [points.start, ...getConnectorWaypointHandles(node), points.end];
