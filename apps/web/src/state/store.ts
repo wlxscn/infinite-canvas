@@ -13,6 +13,7 @@ import {
   appendNodeToGroup,
   bringHierarchicalNodeForward,
   dissolveGroup,
+  getNodeWorldBounds,
   getGroupById,
   getHierarchicalNodeById,
   getNodeParentGroupId,
@@ -255,6 +256,7 @@ export function createGroupNode(x: number, y: number, w = 280, h = 180): GroupNo
     y,
     w,
     h,
+    rotation: 0,
     children: [],
     name: '成组',
   };
@@ -269,25 +271,12 @@ function isGroupableNode(node: CanvasNode): node is GroupChildNode {
 }
 
 function getNodeBounds(node: GroupChildNode): { x: number; y: number; w: number; h: number } {
-  if (node.type === 'freehand') {
-    const minX = Math.min(...node.points.map((point) => point.x));
-    const minY = Math.min(...node.points.map((point) => point.y));
-    const maxX = Math.max(...node.points.map((point) => point.x));
-    const maxY = Math.max(...node.points.map((point) => point.y));
-    return {
-      x: minX,
-      y: minY,
-      w: maxX - minX,
-      h: maxY - minY,
-    };
-  }
-
-  return {
-    x: node.x,
-    y: node.y,
-    w: node.w,
-    h: node.h,
-  };
+  const bounds = getNodeWorldBounds(node, {
+    version: 2,
+    viewport: { tx: 0, ty: 0, scale: 1 },
+    nodes: [node],
+  });
+  return bounds;
 }
 
 function toGroupChild(node: GroupChildNode, group: GroupNode): GroupNode['children'][number] {

@@ -1,8 +1,7 @@
-import { pointInBounds } from '../geometry';
 import { canDrawLoadedImage, type CanvasRenderRuntime } from '../runtime';
 import type { NodeAdapter } from '../contracts';
 import type { BoardDoc, ImageNode } from '../model';
-import { drawNormalizedRect, getBoxBounds, hitResizeHandle, resizeBoxNode, translateBoxNode } from './shared';
+import { drawRotatedBox, getBoxBounds, hitResizeHandle, hitRotatedBox, resizeBoxNode, translateBoxNode } from './shared';
 
 type ImageAssetRuntime = CanvasRenderRuntime<{ id: string; src: string }>;
 
@@ -11,29 +10,29 @@ export const imageNodeAdapter: NodeAdapter<ImageNode, BoardDoc, ImageAssetRuntim
   draw(ctx, node, env) {
     const asset = env.runtime.assetMap.get(node.assetId);
 
-    drawNormalizedRect(getBoxBounds(node, env.board), env.board.viewport, (x, y, w, h) => {
-      ctx.save();
-      ctx.fillStyle = '#e2e8f0';
-      ctx.fillRect(x, y, w, h);
+    drawRotatedBox(ctx, node, env.board, (drawCtx, x, y, w, h) => {
+      drawCtx.save();
+      drawCtx.fillStyle = '#e2e8f0';
+      drawCtx.fillRect(x, y, w, h);
 
       if (asset) {
         const image = env.runtime.getImage(asset.src, env.rerender);
         if (canDrawLoadedImage(image)) {
-          ctx.drawImage(image, x, y, w, h);
+          drawCtx.drawImage(image, x, y, w, h);
         }
       }
 
-      ctx.strokeStyle = 'rgba(15, 23, 42, 0.18)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x, y, w, h);
-      ctx.restore();
+      drawCtx.strokeStyle = 'rgba(15, 23, 42, 0.18)';
+      drawCtx.lineWidth = 1;
+      drawCtx.strokeRect(x, y, w, h);
+      drawCtx.restore();
     });
   },
   getBounds(node, board) {
     return getBoxBounds(node, board);
   },
   hitTest(node, point, tolerance, board) {
-    return pointInBounds(point, getBoxBounds(node, board), tolerance);
+    return hitRotatedBox(node, point, tolerance, board);
   },
   translate(node, delta) {
     return translateBoxNode(node, delta);
@@ -42,6 +41,6 @@ export const imageNodeAdapter: NodeAdapter<ImageNode, BoardDoc, ImageAssetRuntim
     return resizeBoxNode(node, pointer);
   },
   hitResizeHandle(node, point, scale, handleSize, board) {
-    return hitResizeHandle(getBoxBounds(node, board), point, scale, handleSize);
+    return hitResizeHandle(node, point, scale, handleSize, board);
   },
 };

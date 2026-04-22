@@ -1,12 +1,13 @@
 import { isConnectorNode, resolveConnectorPathPoints } from './anchors';
 import { createCanvasRenderRuntime, type CanvasRenderRuntime } from './runtime';
 import { drawCanvasNode, getCanvasNodeBounds } from './canvas-registry';
-import { normalizeBounds } from './geometry';
+import { getRotatedBoxCorners, normalizeBounds } from './geometry';
 import { getNodeById, isGroupNode, resolveNodeToWorld } from './hierarchy';
 import { worldToScreen } from './transform';
 import type { BoardDoc, CanvasNode, ConnectorNode, GroupNode, FreehandNode, Point, RectNode } from './model';
 import type { SelectionBox } from './controller-state';
 import type { CanvasAssetRecord } from './canvas-registry';
+import { getResizeHandlePoint, getRotateHandlePoint } from './adapters/shared';
 
 interface RenderOptions {
   canvas: HTMLCanvasElement;
@@ -52,24 +53,55 @@ function drawNodeChrome(
     return;
   }
 
-  const bounds = normalizeBounds(getCanvasNodeBounds(node, board));
-  const p = worldToScreen({ x: bounds.x, y: bounds.y }, board.viewport);
-  const w = bounds.w * board.viewport.scale;
-  const h = bounds.h * board.viewport.scale;
+  const bounds = getCanvasNodeBounds(node, board);
   const handle = 10;
+  const worldNode = resolveNodeToWorld(node, board);
+  const isRotatedNode = 'w' in worldNode && 'h' in worldNode && !isConnectorNode(worldNode);
 
   ctx.save();
   ctx.strokeStyle = strokeStyle;
   ctx.lineWidth = rectLineWidth;
-  ctx.strokeRect(p.x - 4, p.y - 4, w + 8, h + 8);
+  if (isRotatedNode) {
+    const corners = getRotatedBoxCorners(worldNode);
+    const screenCorners = corners.map((corner) => worldToScreen(corner, board.viewport));
+    ctx.beginPath();
+    ctx.moveTo(screenCorners[0].x, screenCorners[0].y);
+    for (const corner of screenCorners.slice(1)) {
+      ctx.lineTo(corner.x, corner.y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+  } else {
+    const p = worldToScreen({ x: bounds.x, y: bounds.y }, board.viewport);
+    const w = bounds.w * board.viewport.scale;
+    const h = bounds.h * board.viewport.scale;
+    ctx.strokeRect(p.x - 4, p.y - 4, w + 8, h + 8);
+  }
   if (state === 'selected') {
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#2563eb';
     ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.rect(p.x + w - handle / 2, p.y + h - handle / 2, handle, handle);
-    ctx.fill();
-    ctx.stroke();
+    if (isRotatedNode) {
+      const resizeHandle = worldToScreen(getResizeHandlePoint(worldNode, undefined), board.viewport);
+      const rotateHandle = worldToScreen(getRotateHandlePoint(worldNode, undefined), board.viewport);
+      ctx.beginPath();
+      ctx.rect(resizeHandle.x - handle / 2, resizeHandle.y - handle / 2, handle, handle);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(rotateHandle.x, rotateHandle.y, handle / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      const bounds = getCanvasNodeBounds(node, board);
+      const p = worldToScreen({ x: bounds.x, y: bounds.y }, board.viewport);
+      const w = bounds.w * board.viewport.scale;
+      const h = bounds.h * board.viewport.scale;
+      ctx.beginPath();
+      ctx.rect(p.x + w - handle / 2, p.y + h - handle / 2, handle, handle);
+      ctx.fill();
+      ctx.stroke();
+    }
   }
   ctx.restore();
 }
@@ -99,10 +131,8 @@ function drawActiveGroupOverlay(
   width: number,
   height: number,
 ): void {
-  const bounds = normalizeBounds(resolveNodeToWorld(activeGroup, board));
-  const topLeft = worldToScreen({ x: bounds.x, y: bounds.y }, board.viewport);
-  const screenWidth = bounds.w * board.viewport.scale;
-  const screenHeight = bounds.h * board.viewport.scale;
+  const corners = getRotatedBoxCorners(activeGroup);
+  const screenCorners = corners.map((corner) => worldToScreen(corner, board.viewport));
 
   ctx.save();
   ctx.fillStyle = 'rgba(15, 23, 42, 0.08)';
@@ -110,7 +140,13 @@ function drawActiveGroupOverlay(
   ctx.strokeStyle = 'rgba(196, 78, 28, 0.72)';
   ctx.lineWidth = 2;
   ctx.setLineDash([10, 6]);
-  ctx.strokeRect(topLeft.x - 6, topLeft.y - 6, screenWidth + 12, screenHeight + 12);
+  ctx.beginPath();
+  ctx.moveTo(screenCorners[0].x, screenCorners[0].y);
+  for (const corner of screenCorners.slice(1)) {
+    ctx.lineTo(corner.x, corner.y);
+  }
+  ctx.closePath();
+  ctx.stroke();
   ctx.restore();
 }
 

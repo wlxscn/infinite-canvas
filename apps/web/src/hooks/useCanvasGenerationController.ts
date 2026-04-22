@@ -93,6 +93,7 @@ function createGeneratedNode(asset: AssetRecord, center: { x: number; y: number 
     y: center.y - height / 2,
     w: width,
     h: height,
+    rotation: 0,
   };
 }
 

@@ -1,4 +1,5 @@
 import type { EnginePoint } from './contracts';
+import type { RotatableBoxNode, Point } from './model';
 
 export interface Bounds {
   x: number;
@@ -79,4 +80,62 @@ export function distanceToSegment<TPoint extends EnginePoint>(point: TPoint, a: 
   const px = a.x + t * dx;
   const py = a.y + t * dy;
   return Math.hypot(point.x - px, point.y - py);
+}
+
+export function rotatePoint<TPoint extends EnginePoint>(point: TPoint, center: EnginePoint, angle = 0): Point {
+  if (angle === 0) {
+    return { x: point.x, y: point.y };
+  }
+
+  const dx = point.x - center.x;
+  const dy = point.y - center.y;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x: center.x + dx * cos - dy * sin,
+    y: center.y + dx * sin + dy * cos,
+  };
+}
+
+export function getBoxCenter<TBox extends RotatableBoxNode>(box: TBox): Point {
+  return {
+    x: box.x + box.w / 2,
+    y: box.y + box.h / 2,
+  };
+}
+
+export function getBoxRotation<TBox extends RotatableBoxNode>(box: TBox): number {
+  return box.rotation ?? 0;
+}
+
+export function getRotatedBoxCorners<TBox extends RotatableBoxNode>(box: TBox): [Point, Point, Point, Point] {
+  const center = getBoxCenter(box);
+  const angle = getBoxRotation(box);
+  const corners: [Point, Point, Point, Point] = [
+    { x: box.x, y: box.y },
+    { x: box.x + box.w, y: box.y },
+    { x: box.x + box.w, y: box.y + box.h },
+    { x: box.x, y: box.y + box.h },
+  ];
+
+  return corners.map((corner) => rotatePoint(corner, center, angle)) as [Point, Point, Point, Point];
+}
+
+export function getRotatedBoxBounds<TBox extends RotatableBoxNode>(box: TBox): Bounds {
+  return normalizeBounds(boundsFromPoints(getRotatedBoxCorners(box)));
+}
+
+export function pointInRotatedBox<TBox extends RotatableBoxNode>(point: EnginePoint, box: TBox, tolerance = 0): boolean {
+  const center = getBoxCenter(box);
+  const localPoint = rotatePoint(point, center, -getBoxRotation(box));
+  return pointInBounds(
+    localPoint,
+    {
+      x: box.x,
+      y: box.y,
+      w: box.w,
+      h: box.h,
+    },
+    tolerance,
+  );
 }

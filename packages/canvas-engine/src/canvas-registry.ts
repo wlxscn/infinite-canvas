@@ -10,6 +10,7 @@ import { textNodeAdapter } from './adapters/text';
 import { videoNodeAdapter } from './adapters/video';
 import { connectorNodeAdapter } from './adapters/connector';
 import { groupNodeAdapter } from './adapters/group';
+import { getRotateHandlePoint, rotateBoxNode } from './adapters/shared';
 
 export interface CanvasAssetRecord extends AssetRecordLike {
   src: string;
@@ -81,6 +82,38 @@ export function hitCanvasNodeResizeHandle(
   board?: BoardDoc,
 ): boolean {
   return canvasNodeRegistry.hitResizeHandle(node, point, scale, handleSize, board);
+}
+
+function isRotatableCanvasNode(node: CanvasNode): node is Exclude<CanvasNode, { type: 'freehand' | 'connector' }> {
+  return node.type !== 'freehand' && node.type !== 'connector';
+}
+
+export function hitCanvasNodeRotateHandle(
+  node: CanvasNode,
+  point: Point,
+  scale: number,
+  handleSize: number,
+  board?: BoardDoc,
+): boolean {
+  if (!isRotatableCanvasNode(node)) {
+    return false;
+  }
+
+  const handle = getRotateHandlePoint(node, board);
+  const half = handleSize / scale / 2;
+  return (
+    point.x >= handle.x - half - 2 / scale &&
+    point.x <= handle.x + half + 2 / scale &&
+    point.y >= handle.y - half - 2 / scale &&
+    point.y <= handle.y + half + 2 / scale
+  );
+}
+
+export function rotateCanvasNode(node: CanvasNode, rotation: number): CanvasNode {
+  if (!isRotatableCanvasNode(node)) {
+    return node;
+  }
+  return rotateBoxNode(node, rotation);
 }
 
 export function getNodeAdapterRegistry(): ReadonlyMap<CanvasNode['type'], RegisteredCanvasNodeAdapter> {

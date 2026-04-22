@@ -114,7 +114,22 @@ function normalizeNodes(nodes: unknown): CanvasNode[] {
       return [
         {
           ...candidate,
+          rotation: typeof candidate.rotation === 'number' ? candidate.rotation : 0,
           children: normalizeNodes(candidate.children),
+        } as unknown as CanvasNode,
+      ];
+    }
+
+    if (
+      candidate.type === 'rect' ||
+      candidate.type === 'text' ||
+      candidate.type === 'image' ||
+      candidate.type === 'video'
+    ) {
+      return [
+        {
+          ...candidate,
+          rotation: typeof candidate.rotation === 'number' ? candidate.rotation : 0,
         } as unknown as CanvasNode,
       ];
     }

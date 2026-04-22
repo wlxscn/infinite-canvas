@@ -1,26 +1,25 @@
-import { pointInBounds } from '../geometry';
 import type { NodeAdapter } from '../contracts';
 import type { BoardDoc, RectNode } from '../model';
-import { drawNormalizedRect, getBoxBounds, hitResizeHandle, resizeBoxNode, translateBoxNode } from './shared';
+import { drawRotatedBox, getBoxBounds, hitResizeHandle, hitRotatedBox, resizeBoxNode, translateBoxNode } from './shared';
 
 export const rectNodeAdapter: NodeAdapter<RectNode, BoardDoc, unknown> = {
   type: 'rect',
   draw(ctx, node, env) {
-    drawNormalizedRect(getBoxBounds(node, env.board), env.board.viewport, (x, y, w, h) => {
-      ctx.save();
-      ctx.fillStyle = node.fill ?? 'rgba(59, 130, 246, 0.18)';
-      ctx.strokeStyle = node.stroke;
-      ctx.lineWidth = 1.5;
-      ctx.fillRect(x, y, w, h);
-      ctx.strokeRect(x, y, w, h);
-      ctx.restore();
+    drawRotatedBox(ctx, node, env.board, (drawCtx, x, y, w, h) => {
+      drawCtx.save();
+      drawCtx.fillStyle = node.fill ?? 'rgba(59, 130, 246, 0.18)';
+      drawCtx.strokeStyle = node.stroke;
+      drawCtx.lineWidth = 1.5;
+      drawCtx.fillRect(x, y, w, h);
+      drawCtx.strokeRect(x, y, w, h);
+      drawCtx.restore();
     });
   },
   getBounds(node, board) {
     return getBoxBounds(node, board);
   },
   hitTest(node, point, tolerance, board) {
-    return pointInBounds(point, getBoxBounds(node, board), tolerance);
+    return hitRotatedBox(node, point, tolerance, board);
   },
   translate(node, delta) {
     return translateBoxNode(node, delta);
@@ -29,6 +28,6 @@ export const rectNodeAdapter: NodeAdapter<RectNode, BoardDoc, unknown> = {
     return resizeBoxNode(node, pointer);
   },
   hitResizeHandle(node, point, scale, handleSize, board) {
-    return hitResizeHandle(getBoxBounds(node, board), point, scale, handleSize);
+    return hitResizeHandle(node, point, scale, handleSize, board);
   },
 };
