@@ -2,7 +2,7 @@ import {
   createCanvasInteractionController,
   createInitialInteractionState,
   getConnectorCurveControlHandle,
-  getDefaultConnectorCurveControl,
+  getDefaultConnectorCurveControls,
   getConnectorWaypointHandles,
   getDefaultConnectorWaypoints,
   getNodeAnchors,
@@ -140,6 +140,19 @@ function CanvasSnapGuides({ guides }: { guides: SnapGuide[] }) {
   );
 }
 
+function getConnectorGuideStyle(start: Point, end: Point) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+
+  return {
+    left: start.x,
+    top: start.y,
+    width: Math.hypot(dx, dy),
+    transform: `translateY(-50%) rotate(${Math.atan2(dy, dx)}rad)`,
+    transformOrigin: '0 50%',
+  };
+}
+
 function CanvasAnchorOverlay({
   board,
   tool,
@@ -201,10 +214,16 @@ function CanvasAnchorOverlay({
       waypoints: isConnectorEditing
         ? getConnectorWaypointHandles(editingConnector).map((point) => worldToScreen(point, board.viewport))
         : [],
-      curveControl: (() => {
-        const control = getConnectorCurveControlHandle(editingConnector, board);
-        return control ? worldToScreen(control, board.viewport) : null;
-      })(),
+      curveControls: {
+        start: (() => {
+          const control = getConnectorCurveControlHandle(editingConnector, board, 'start');
+          return control ? worldToScreen(control, board.viewport) : null;
+        })(),
+        end: (() => {
+          const control = getConnectorCurveControlHandle(editingConnector, board, 'end');
+          return control ? worldToScreen(control, board.viewport) : null;
+        })(),
+      },
     };
   }, [board, editingConnector, isConnectorEditing]);
 
@@ -252,15 +271,37 @@ function CanvasAnchorOverlay({
               style={{ left: point.x, top: point.y }}
             />
           ))}
-          {connectorHandles.curveControl ? (
-            <div
-              className={
-                activeConnectorHandle?.kind === 'curve-control'
-                  ? 'canvas-connector-handle canvas-connector-handle-curve canvas-connector-handle-active'
-                  : 'canvas-connector-handle canvas-connector-handle-curve'
-              }
-              style={{ left: connectorHandles.curveControl.x, top: connectorHandles.curveControl.y }}
-            />
+          {connectorHandles.curveControls.start ? (
+            <>
+              <div
+                className="canvas-connector-handle-guide"
+                style={getConnectorGuideStyle(connectorHandles.start, connectorHandles.curveControls.start)}
+              />
+              <div
+                className={
+                  activeConnectorHandle?.kind === 'curve-control' && activeConnectorHandle.control === 'start'
+                    ? 'canvas-connector-handle canvas-connector-handle-curve canvas-connector-handle-active'
+                    : 'canvas-connector-handle canvas-connector-handle-curve'
+                }
+                style={{ left: connectorHandles.curveControls.start.x, top: connectorHandles.curveControls.start.y }}
+              />
+            </>
+          ) : null}
+          {connectorHandles.curveControls.end ? (
+            <>
+              <div
+                className="canvas-connector-handle-guide"
+                style={getConnectorGuideStyle(connectorHandles.end, connectorHandles.curveControls.end)}
+              />
+              <div
+                className={
+                  activeConnectorHandle?.kind === 'curve-control' && activeConnectorHandle.control === 'end'
+                    ? 'canvas-connector-handle canvas-connector-handle-curve canvas-connector-handle-active'
+                    : 'canvas-connector-handle canvas-connector-handle-curve'
+                }
+                style={{ left: connectorHandles.curveControls.end.x, top: connectorHandles.curveControls.end.y }}
+              />
+            </>
           ) : null}
           {connectorHandles.showEndpoints ? (
             <div
@@ -394,28 +435,34 @@ export function CanvasStage({
         fontSize: 20,
         fontFamily: 'Space Grotesk, Avenir Next, Segoe UI, sans-serif',
       }),
-      createConnectorNode: (anchor, point, pathMode) => ({
-        id: createId('node'),
-        type: 'connector',
-        start: {
-          kind: 'attached',
-          nodeId: anchor.nodeId,
-          anchor: anchor.anchor,
-        },
-        end: {
-          kind: 'free',
-          x: point.x,
-          y: point.y,
-        },
-        pathMode,
-        waypoints: pathMode === 'polyline' ? getDefaultConnectorWaypoints(anchor.point, point, anchor.anchor) : [],
-        curveControl:
+      createConnectorNode: (anchor, point, pathMode) => {
+        const curveControls =
           pathMode === 'curve'
-            ? getDefaultConnectorCurveControl(anchor.point, point, anchor.anchor)
-            : undefined,
-        stroke: '#c44e1c',
-        width: 2,
-      }),
+            ? getDefaultConnectorCurveControls(anchor.point, point, anchor.anchor)
+            : null;
+
+        return {
+          id: createId('node'),
+          type: 'connector',
+          start: {
+            kind: 'attached',
+            nodeId: anchor.nodeId,
+            anchor: anchor.anchor,
+          },
+          end: {
+            kind: 'free',
+            x: point.x,
+            y: point.y,
+          },
+          pathMode,
+          waypoints: pathMode === 'polyline' ? getDefaultConnectorWaypoints(anchor.point, point, anchor.anchor) : [],
+          curveControl: undefined,
+          curveStartControl: curveControls?.startControl,
+          curveEndControl: curveControls?.endControl,
+          stroke: '#c44e1c',
+          width: 2,
+        };
+      },
       getNodeById,
       upsertNode,
       insertNodeIntoGroup,

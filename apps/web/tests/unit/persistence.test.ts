@@ -248,7 +248,8 @@ describe('project persistence', () => {
           anchor: 'west',
         },
         pathMode: 'curve',
-        curveControl: { x: 210, y: 24 },
+        curveStartControl: { x: 170, y: 28 },
+        curveEndControl: { x: 270, y: 40 },
         stroke: '#c44e1c',
         width: 2,
       },
@@ -261,7 +262,8 @@ describe('project persistence', () => {
     expect(connector).toMatchObject({
       type: 'connector',
       pathMode: 'curve',
-      curveControl: { x: 210, y: 24 },
+      curveStartControl: { x: 170, y: 28 },
+      curveEndControl: { x: 270, y: 40 },
     });
   });
 

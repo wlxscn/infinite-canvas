@@ -964,7 +964,8 @@ test('curve connector mode creates curved connectors, supports undo redo, and re
   let connector = project.board.nodes.find((node: { type: string }) => node.type === 'connector');
   expect(connector).toBeTruthy();
   expect(connector.pathMode).toBe('curve');
-  expect(connector.curveControl).toBeTruthy();
+  expect(connector.curveStartControl).toBeTruthy();
+  expect(connector.curveEndControl).toBeTruthy();
 
   await page.getByRole('button', { name: '撤销' }).click();
   await page.waitForFunction((storageKey) => {
@@ -981,13 +982,15 @@ test('curve connector mode creates curved connectors, supports undo redo, and re
   project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
   connector = project.board.nodes.find((node: { type: string }) => node.type === 'connector');
   expect(connector.pathMode).toBe('curve');
-  expect(connector.curveControl).toBeTruthy();
+  expect(connector.curveStartControl).toBeTruthy();
+  expect(connector.curveEndControl).toBeTruthy();
 
   await page.reload();
   project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
   connector = project.board.nodes.find((node: { type: string }) => node.type === 'connector');
   expect(connector.pathMode).toBe('curve');
-  expect(connector.curveControl).toBeTruthy();
+  expect(connector.curveStartControl).toBeTruthy();
+  expect(connector.curveEndControl).toBeTruthy();
 });
 
 test('hover and selected chrome stay lightweight during hover and connector selection', async ({ page }) => {

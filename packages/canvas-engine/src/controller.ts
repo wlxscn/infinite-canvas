@@ -7,7 +7,7 @@ import {
   getConnectorCurveControlHandle,
   getConnectorPathMode,
   getConnectorWaypointHandles,
-  getDefaultConnectorCurveControl,
+  getDefaultConnectorCurveControls,
   getDefaultConnectorWaypoints,
   getNodesInContext,
   getNodeParentGroupId,
@@ -165,9 +165,13 @@ function hitConnectorHandle(
     }
   }
 
-  const curveControl = getConnectorCurveControlHandle(node, board);
-  if (curveControl && Math.hypot(curveControl.x - point.x, curveControl.y - point.y) <= tolerance) {
-    return { kind: 'curve-control' };
+  const startCurveControl = getConnectorCurveControlHandle(node, board, 'start');
+  if (startCurveControl && Math.hypot(startCurveControl.x - point.x, startCurveControl.y - point.y) <= tolerance) {
+    return { kind: 'curve-control', control: 'start' };
+  }
+  const endCurveControl = getConnectorCurveControlHandle(node, board, 'end');
+  if (endCurveControl && Math.hypot(endCurveControl.x - point.x, endCurveControl.y - point.y) <= tolerance) {
+    return { kind: 'curve-control', control: 'end' };
   }
   return null;
 }
@@ -497,6 +501,8 @@ export function createCanvasInteractionController<TProject extends CanvasProject
         pathMode: 'straight',
         waypoints: [],
         curveControl: undefined,
+        curveStartControl: undefined,
+        curveEndControl: undefined,
       };
     }
 
@@ -512,17 +518,20 @@ export function createCanvasInteractionController<TProject extends CanvasProject
     const endAnchor = node.end.kind === 'attached' ? node.end.anchor : undefined;
 
     if (getConnectorPathMode(node) === 'curve') {
+      const defaultControls = getDefaultConnectorCurveControls(
+        start,
+        end,
+        node.start.kind === 'attached' ? node.start.anchor : undefined,
+        node.end.kind === 'attached' ? node.end.anchor : undefined,
+      );
+
       return {
         ...node,
         pathMode: 'curve',
         waypoints: [],
-        curveControl:
-          node.curveControl ??
-          getDefaultConnectorCurveControl(
-            start,
-            end,
-            node.start.kind === 'attached' ? node.start.anchor : undefined,
-          ),
+        curveControl: node.curveControl,
+        curveStartControl: node.curveStartControl ?? defaultControls.startControl,
+        curveEndControl: node.curveEndControl ?? defaultControls.endControl,
       };
     }
 
@@ -530,6 +539,8 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       ...node,
       pathMode: 'polyline',
       curveControl: undefined,
+      curveStartControl: undefined,
+      curveEndControl: undefined,
       waypoints: getDefaultConnectorWaypoints(
         start,
         end,
@@ -937,7 +948,8 @@ export function createCanvasInteractionController<TProject extends CanvasProject
             : { ...state.draftConnector, end: nextEndpoint };
         if (
           (getConnectorPathMode(draftConnector) === 'polyline' && getConnectorWaypointHandles(draftConnector).length === 0) ||
-          (getConnectorPathMode(draftConnector) === 'curve' && !draftConnector.curveControl)
+          (getConnectorPathMode(draftConnector) === 'curve' &&
+            (!draftConnector.curveStartControl || !draftConnector.curveEndControl))
         ) {
           draftConnector = withConnectorPreviewPath(draftConnector, currentBoard);
         }
@@ -961,7 +973,11 @@ export function createCanvasInteractionController<TProject extends CanvasProject
             draftConnector: {
               ...state.draftConnector,
               pathMode: 'curve',
-              curveControl: worldPoint,
+              curveControl: undefined,
+              curveStartControl:
+                activeConnectorHandle.control === 'start' ? worldPoint : state.draftConnector.curveStartControl,
+              curveEndControl:
+                activeConnectorHandle.control === 'end' ? worldPoint : state.draftConnector.curveEndControl,
             },
             proximateConnectorNodeId: null,
             hoveredAnchor: null,

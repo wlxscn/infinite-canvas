@@ -30,7 +30,7 @@ export function getConnectorPathMode(node: ConnectorNode): ConnectorPathMode {
   if (node.pathMode) {
     return node.pathMode;
   }
-  if (node.curveControl) {
+  if (node.curveControl || node.curveStartControl || node.curveEndControl) {
     return 'curve';
   }
   return node.waypoints && node.waypoints.length > 0 ? 'polyline' : 'straight';
@@ -58,6 +58,38 @@ export function getDefaultConnectorCurveControl(start: Point, end: Point, startA
   return {
     x: midpoint.x + normal.x * offset,
     y: midpoint.y + normal.y * offset,
+  };
+}
+
+export function getDefaultConnectorCurveControls(
+  start: Point,
+  end: Point,
+  startAnchor?: AnchorId,
+  endAnchor?: AnchorId,
+): { startControl: Point; endControl: Point } {
+  const distance = Math.hypot(end.x - start.x, end.y - start.y) || 1;
+  const defaultBend = getDefaultConnectorCurveControl(start, end, startAnchor);
+  const midpoint = {
+    x: (start.x + end.x) / 2,
+    y: (start.y + end.y) / 2,
+  };
+  const bendOffset = {
+    x: defaultBend.x - midpoint.x,
+    y: defaultBend.y - midpoint.y,
+  };
+  const handleLength = Math.min(Math.max(distance * 0.24, 40), 148);
+  const startDirection = startAnchor ? getAnchorDirection(startAnchor) : normalizeDirection({ x: end.x - start.x, y: end.y - start.y });
+  const endDirection = endAnchor ? getAnchorDirection(endAnchor) : normalizeDirection({ x: start.x - end.x, y: start.y - end.y });
+
+  return {
+    startControl: {
+      x: start.x + startDirection.x * handleLength + bendOffset.x,
+      y: start.y + startDirection.y * handleLength + bendOffset.y,
+    },
+    endControl: {
+      x: end.x + endDirection.x * handleLength + bendOffset.x,
+      y: end.y + endDirection.y * handleLength + bendOffset.y,
+    },
   };
 }
 
@@ -118,13 +150,19 @@ function getOpposingAnchorOrientation(
   return null;
 }
 
-export function getConnectorCurveControlHandle(node: ConnectorNode, board: BoardDoc): Point | null {
+function getLegacyConnectorCurveControls(
+  node: ConnectorNode,
+  board: BoardDoc,
+): { startControl: Point; endControl: Point } | null {
   if (getConnectorPathMode(node) !== 'curve') {
     return null;
   }
 
-  if (node.curveControl) {
-    return node.curveControl;
+  if (node.curveStartControl && node.curveEndControl) {
+    return {
+      startControl: node.curveStartControl,
+      endControl: node.curveEndControl,
+    };
   }
 
   const points = resolveConnectorPoints(node, board);
@@ -132,11 +170,51 @@ export function getConnectorCurveControlHandle(node: ConnectorNode, board: Board
     return null;
   }
 
-  return getDefaultConnectorCurveControl(
+  if (node.curveControl) {
+    const midpoint = {
+      x: (points.start.x + points.end.x) / 2,
+      y: (points.start.y + points.end.y) / 2,
+    };
+    const bendOffset = {
+      x: node.curveControl.x - midpoint.x,
+      y: node.curveControl.y - midpoint.y,
+    };
+    const distance = Math.hypot(points.end.x - points.start.x, points.end.y - points.start.y) || 1;
+    const handleLength = Math.min(Math.max(distance * 0.24, 40), 148);
+    const startDirection = getEndpointCurveDirection(node.start, points.start, points.end);
+    const endDirection = getEndpointCurveDirection(node.end, points.end, points.start);
+
+    return {
+      startControl: {
+        x: points.start.x + startDirection.x * handleLength + bendOffset.x,
+        y: points.start.y + startDirection.y * handleLength + bendOffset.y,
+      },
+      endControl: {
+        x: points.end.x + endDirection.x * handleLength + bendOffset.x,
+        y: points.end.y + endDirection.y * handleLength + bendOffset.y,
+      },
+    };
+  }
+
+  return getDefaultConnectorCurveControls(
     points.start,
     points.end,
     node.start.kind === 'attached' ? node.start.anchor : undefined,
+    node.end.kind === 'attached' ? node.end.anchor : undefined,
   );
+}
+
+export function getConnectorCurveControlHandle(
+  node: ConnectorNode,
+  board: BoardDoc,
+  control: 'start' | 'end',
+): Point | null {
+  const controls = getLegacyConnectorCurveControls(node, board);
+  if (!controls) {
+    return null;
+  }
+
+  return control === 'start' ? controls.startControl : controls.endControl;
 }
 
 function sampleCubicCurve(start: Point, control1: Point, control2: Point, end: Point, segments = 24): Point[] {
@@ -172,106 +250,50 @@ function getMinOpposingBend(distance: number): number {
   return Math.min(Math.max(distance * 0.1, 18), 34);
 }
 
-function getCurveExitLength(distance: number): number {
-  if (distance <= 180) {
-    return Math.min(Math.max(distance * 0.16, 16), 34);
-  }
-
-  if (distance <= 360) {
-    return Math.min(Math.max(distance * 0.14, 20), 42);
-  }
-
-  return Math.min(Math.max(distance * 0.1, 22), 48);
-}
-
-function getCurveHandleLength(distance: number): number {
-  if (distance <= 180) {
-    return Math.min(Math.max(distance * 0.34, 40), 88);
-  }
-
-  if (distance <= 360) {
-    return Math.min(Math.max(distance * 0.3, 54), 118);
-  }
-
-  return Math.min(Math.max(distance * 0.24, 72), 136);
-}
-
-function getConnectorCurveBezierControls(
+export function resolveConnectorCurveBezierControls(
   node: ConnectorNode,
   board: BoardDoc,
-): { startExit: Point; control1: Point; control2: Point; endExit: Point } | null {
+): { control1: Point; control2: Point } | null {
   const points = resolveConnectorPoints(node, board);
-  const bend = getConnectorCurveControlHandle(node, board);
-  if (!points || !bend) {
+  const controls = getLegacyConnectorCurveControls(node, board);
+  if (!points || !controls) {
     return null;
   }
-
+  const distance = Math.hypot(points.end.x - points.start.x, points.end.y - points.start.y) || 1;
+  const orientation = getOpposingAnchorOrientation(node.start, node.end);
   const midpoint = {
     x: (points.start.x + points.end.x) / 2,
     y: (points.start.y + points.end.y) / 2,
   };
-  const bendOffset = {
-    x: bend.x - midpoint.x,
-    y: bend.y - midpoint.y,
+  const currentMidpoint = {
+    x: (controls.startControl.x + controls.endControl.x) / 2,
+    y: (controls.startControl.y + controls.endControl.y) / 2,
   };
-  const distance = Math.hypot(points.end.x - points.start.x, points.end.y - points.start.y) || 1;
-  const exitLength = getCurveExitLength(distance);
-  const handleLength = getCurveHandleLength(distance);
-  const startDirection = getEndpointCurveDirection(node.start, points.start, points.end);
-  const endDirection = getEndpointCurveDirection(node.end, points.end, points.start);
-  const startExit = {
-    x: points.start.x + startDirection.x * exitLength,
-    y: points.start.y + startDirection.y * exitLength,
+  const currentOffset = {
+    x: currentMidpoint.x - midpoint.x,
+    y: currentMidpoint.y - midpoint.y,
   };
-  const endExit = {
-    x: points.end.x + endDirection.x * exitLength,
-    y: points.end.y + endDirection.y * exitLength,
-  };
-  const exitMidpoint = {
-    x: (startExit.x + endExit.x) / 2,
-    y: (startExit.y + endExit.y) / 2,
-  };
-  const defaultBend = getDefaultConnectorCurveControl(
-    points.start,
-    points.end,
-    node.start.kind === 'attached' ? node.start.anchor : undefined,
-  );
-  const exitBendOffset = {
-    x: bend.x - exitMidpoint.x,
-    y: bend.y - exitMidpoint.y,
-  };
-  const orientation = getOpposingAnchorOrientation(node.start, node.end);
   const minOpposingBend = getMinOpposingBend(distance);
-  const enforcedExitBendOffset =
-    orientation === 'horizontal'
-      ? {
-          x: exitBendOffset.x,
-          y:
-            Math.abs(exitBendOffset.y) >= minOpposingBend
-              ? exitBendOffset.y
-              : Math.sign(exitBendOffset.y || defaultBend.y - midpoint.y || -1) * minOpposingBend,
-        }
-      : orientation === 'vertical'
-        ? {
-            x:
-              Math.abs(exitBendOffset.x) >= minOpposingBend
-                ? exitBendOffset.x
-                : Math.sign(exitBendOffset.x || defaultBend.x - midpoint.x || -1) * minOpposingBend,
-            y: exitBendOffset.y,
-          }
-        : exitBendOffset;
+
+  if (orientation === 'horizontal' && Math.abs(currentOffset.y) < minOpposingBend) {
+    const direction = Math.sign(currentOffset.y || -1);
+    return {
+      control1: { ...controls.startControl, y: controls.startControl.y + direction * (minOpposingBend - Math.abs(currentOffset.y)) },
+      control2: { ...controls.endControl, y: controls.endControl.y + direction * (minOpposingBend - Math.abs(currentOffset.y)) },
+    };
+  }
+
+  if (orientation === 'vertical' && Math.abs(currentOffset.x) < minOpposingBend) {
+    const direction = Math.sign(currentOffset.x || -1);
+    return {
+      control1: { ...controls.startControl, x: controls.startControl.x + direction * (minOpposingBend - Math.abs(currentOffset.x)) },
+      control2: { ...controls.endControl, x: controls.endControl.x + direction * (minOpposingBend - Math.abs(currentOffset.x)) },
+    };
+  }
 
   return {
-    startExit,
-    control1: {
-      x: startExit.x + startDirection.x * handleLength + enforcedExitBendOffset.x,
-      y: startExit.y + startDirection.y * handleLength + enforcedExitBendOffset.y,
-    },
-    control2: {
-      x: endExit.x + endDirection.x * handleLength + enforcedExitBendOffset.x,
-      y: endExit.y + endDirection.y * handleLength + enforcedExitBendOffset.y,
-    },
-    endExit,
+    control1: controls.startControl,
+    control2: controls.endControl,
   };
 }
 
@@ -417,17 +439,11 @@ export function resolveConnectorPathPoints(node: ConnectorNode, board: BoardDoc)
   }
 
   if (getConnectorPathMode(node) === 'curve') {
-    const controls = getConnectorCurveBezierControls(node, board);
+    const controls = resolveConnectorCurveBezierControls(node, board);
     if (!controls) {
       return [points.start, points.end];
     }
-    const bendSegment = sampleCubicCurve(
-      controls.startExit,
-      controls.control1,
-      controls.control2,
-      controls.endExit,
-    );
-    return [points.start, controls.startExit, ...bendSegment.slice(1, -1), controls.endExit, points.end];
+    return sampleCubicCurve(points.start, controls.control1, controls.control2, points.end);
   }
 
   return [points.start, ...getConnectorWaypointHandles(node), points.end];

@@ -4,6 +4,7 @@ import {
   computeDragSnap,
   createCanvasInteractionController,
   createCanvasRenderRuntime,
+  getDefaultConnectorCurveControls,
   getAllDescendantNodes,
   getCanvasNodeBounds,
   getNodeAdapter,
@@ -27,6 +28,11 @@ function createDraftConnector(
   point = anchor.point,
   pathMode: 'straight' | 'polyline' | 'curve' = 'straight',
 ) {
+  const curveControls =
+    pathMode === 'curve'
+      ? getDefaultConnectorCurveControls(anchor.point, point, anchor.anchor)
+      : null;
+
   return {
     id: 'draft_connector',
     type: 'connector' as const,
@@ -42,13 +48,9 @@ function createDraftConnector(
     },
     pathMode,
     waypoints: pathMode === 'polyline' ? [{ x: point.x, y: anchor.point.y }] : [],
-    curveControl:
-      pathMode === 'curve'
-        ? {
-            x: (anchor.point.x + point.x) / 2,
-            y: Math.min(anchor.point.y, point.y) - 48,
-          }
-        : undefined,
+    curveControl: undefined,
+    curveStartControl: curveControls?.startControl,
+    curveEndControl: curveControls?.endControl,
     stroke: '#c44e1c',
     width: 2,
   };
@@ -2274,16 +2276,17 @@ describe('canvas engine', () => {
       start: { kind: 'attached', nodeId: 'node_rect_a', anchor: 'east' },
       end: { kind: 'attached', nodeId: 'node_rect_b', anchor: 'west' },
     });
-    expect(curvedConnector.curveControl).toBeTruthy();
+    expect(curvedConnector.curveStartControl).toBeTruthy();
+    expect(curvedConnector.curveEndControl).toBeTruthy();
     const curvedPath = resolveConnectorPathPoints(curvedConnector, createdProject.board);
     expect(curvedPath).toBeTruthy();
-    expect(curvedPath?.[1].x).toBeGreaterThan((curvedPath?.[0].x ?? 0) + 12);
-    expect(curvedPath?.[1].x).toBeLessThan((curvedPath?.[0].x ?? 0) + 44);
-    expect(Math.abs((curvedPath?.[1].y ?? 0) - (curvedPath?.[0].y ?? 0))).toBeLessThan(0.001);
+    expect(curvedPath?.[1].x).toBeGreaterThan((curvedPath?.[0].x ?? 0) + 3);
+    expect(curvedPath?.[1].x).toBeLessThan((curvedPath?.[0].x ?? 0) + 28);
+    expect(Math.abs((curvedPath?.[1].y ?? 0) - (curvedPath?.[0].y ?? 0))).toBeLessThan(4);
     expect(Math.min(...(curvedPath ?? []).map((point) => point.y))).toBeLessThan(80);
 
     const editController = createController(createdProject, 'draft_connector', 'select');
-    const control = curvedConnector.curveControl as { x: number; y: number };
+    const control = curvedConnector.curveStartControl as { x: number; y: number };
 
     editController.handlePointerDown({
       screenPoint: control,
@@ -2307,7 +2310,8 @@ describe('canvas engine', () => {
     const editedProject = onCommitProject.mock.calls[1][0];
     const editedConnector = editedProject.board.nodes.find((node: CanvasNode) => node.id === 'draft_connector');
     expect(editedConnector.pathMode).toBe('curve');
-    expect(editedConnector.curveControl).toEqual({ x: control.x, y: control.y - 40 });
+    expect(editedConnector.curveStartControl).toEqual({ x: control.x, y: control.y - 40 });
+    expect(editedConnector.curveEndControl).toEqual(curvedConnector.curveEndControl);
 
     controller.dispose();
     editController.dispose();
@@ -2328,7 +2332,8 @@ describe('canvas engine', () => {
         anchor: 'west',
       },
       pathMode: 'curve',
-      curveControl: { x: 230, y: 70 },
+      curveStartControl: { x: 214, y: 70 },
+      curveEndControl: { x: 226, y: 70 },
       stroke: '#c44e1c',
       width: 2,
     };
@@ -2380,7 +2385,8 @@ describe('canvas engine', () => {
         anchor: 'west',
       },
       pathMode: 'curve',
-      curveControl: { x: 360, y: 80 },
+      curveStartControl: { x: 336, y: 80 },
+      curveEndControl: { x: 344, y: 80 },
       stroke: '#c44e1c',
       width: 2,
     };

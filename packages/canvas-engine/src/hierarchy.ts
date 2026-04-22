@@ -190,6 +190,12 @@ function resolveConnectorBoundsPoints(node: Extract<CanvasNode, { type: 'connect
   if (node.curveControl) {
     points.push(node.curveControl);
   }
+  if (node.curveStartControl) {
+    points.push(node.curveStartControl);
+  }
+  if (node.curveEndControl) {
+    points.push(node.curveEndControl);
+  }
   return points.length > 0 ? points : [{ x: 0, y: 0 }];
 }
 

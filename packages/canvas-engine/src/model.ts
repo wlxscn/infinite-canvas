@@ -91,6 +91,8 @@ export interface ConnectorNode {
   pathMode?: ConnectorPathMode;
   waypoints?: Point[];
   curveControl?: Point;
+  curveStartControl?: Point;
+  curveEndControl?: Point;
 }
 
 export type CanvasNode =

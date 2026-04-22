@@ -1,7 +1,7 @@
 import { boundsFromPoints, distanceToSegment } from '../geometry';
 import type { NodeAdapter } from '../contracts';
 import type { BoardDoc, ConnectorNode } from '../model';
-import { getConnectorWaypointHandles, resolveConnectorPathPoints } from '../anchors';
+import { getConnectorPathMode, getConnectorWaypointHandles, resolveConnectorCurveBezierControls, resolveConnectorPathPoints } from '../anchors';
 import type { AssetRecordLike, CanvasRenderRuntime } from '../runtime';
 import { worldToScreen } from '../transform';
 
@@ -12,7 +12,6 @@ export const connectorNodeAdapter: NodeAdapter<ConnectorNode, BoardDoc, CanvasRe
     if (!points) {
       return;
     }
-    const screenPoints = points.map((point) => worldToScreen(point, env.board.viewport));
 
     ctx.save();
     ctx.strokeStyle = node.stroke;
@@ -20,9 +19,24 @@ export const connectorNodeAdapter: NodeAdapter<ConnectorNode, BoardDoc, CanvasRe
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.beginPath();
+    const screenPoints = points.map((point) => worldToScreen(point, env.board.viewport));
     ctx.moveTo(screenPoints[0].x, screenPoints[0].y);
-    for (const point of screenPoints.slice(1)) {
-      ctx.lineTo(point.x, point.y);
+    if (getConnectorPathMode(node) === 'curve') {
+      const controls = resolveConnectorCurveBezierControls(node, env.board);
+      if (controls) {
+        const control1 = worldToScreen(controls.control1, env.board.viewport);
+        const control2 = worldToScreen(controls.control2, env.board.viewport);
+        const end = screenPoints[screenPoints.length - 1];
+        ctx.bezierCurveTo(control1.x, control1.y, control2.x, control2.y, end.x, end.y);
+      } else {
+        for (const point of screenPoints.slice(1)) {
+          ctx.lineTo(point.x, point.y);
+        }
+      }
+    } else {
+      for (const point of screenPoints.slice(1)) {
+        ctx.lineTo(point.x, point.y);
+      }
     }
     ctx.stroke();
     ctx.restore();
@@ -60,6 +74,18 @@ export const connectorNodeAdapter: NodeAdapter<ConnectorNode, BoardDoc, CanvasRe
         ? {
             x: node.curveControl.x + delta.x,
             y: node.curveControl.y + delta.y,
+          }
+        : undefined,
+      curveStartControl: node.curveStartControl
+        ? {
+            x: node.curveStartControl.x + delta.x,
+            y: node.curveStartControl.y + delta.y,
+          }
+        : undefined,
+      curveEndControl: node.curveEndControl
+        ? {
+            x: node.curveEndControl.x + delta.x,
+            y: node.curveEndControl.y + delta.y,
           }
         : undefined,
       start:
