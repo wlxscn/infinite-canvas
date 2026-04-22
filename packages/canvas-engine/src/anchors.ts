@@ -160,6 +160,18 @@ function sampleCubicCurve(start: Point, control1: Point, control2: Point, end: P
   return points;
 }
 
+function getMinOpposingBend(distance: number): number {
+  if (distance <= 180) {
+    return Math.min(Math.max(distance * 0.22, 28), 58);
+  }
+
+  if (distance <= 360) {
+    return Math.min(Math.max(distance * 0.18, 24), 52);
+  }
+
+  return Math.min(Math.max(distance * 0.1, 18), 34);
+}
+
 function getConnectorCurveBezierControls(
   node: ConnectorNode,
   board: BoardDoc,
@@ -205,7 +217,7 @@ function getConnectorCurveBezierControls(
     y: bend.y - exitMidpoint.y,
   };
   const orientation = getOpposingAnchorOrientation(node.start, node.end);
-  const minOpposingBend = Math.min(Math.max(distance * 0.18, 24), 56);
+  const minOpposingBend = getMinOpposingBend(distance);
   const enforcedExitBendOffset =
     orientation === 'horizontal'
       ? {
