@@ -299,6 +299,7 @@ export function CanvasStage({
   const initialSelectedIdRef = useRef(selectedId);
   const selectedIdsRef = useRef(selectedIds);
   const toolRef = useRef(tool);
+  const connectorPathModeRef = useRef(connectorPathMode);
   const isSpacePressedRef = useRef(isSpacePressed);
   const onSelectRef = useRef(onSelect);
   const onReplaceProjectRef = useRef(onReplaceProject);
@@ -336,6 +337,10 @@ export function CanvasStage({
   }, [tool]);
 
   useLayoutEffect(() => {
+    connectorPathModeRef.current = connectorPathMode;
+  }, [connectorPathMode]);
+
+  useLayoutEffect(() => {
     isSpacePressedRef.current = isSpacePressed;
   }, [isSpacePressed]);
 
@@ -357,7 +362,7 @@ export function CanvasStage({
       getActiveGroupId: () => activeGroupId,
       getTool: () => toolRef.current,
       isSpacePressed: () => isSpacePressedRef.current,
-      getConnectorPathMode: () => connectorPathMode,
+      getConnectorPathMode: () => connectorPathModeRef.current,
       createRectNode: (point) => ({
         id: createId('node'),
         type: 'rect',
@@ -431,7 +436,7 @@ export function CanvasStage({
       controller.dispose();
       controllerRef.current = null;
     };
-  }, [activeGroupId, connectorPathMode, renderProjectNow]);
+  }, [activeGroupId, renderProjectNow]);
 
   useEffect(() => {
     controllerRef.current?.syncProject(project);

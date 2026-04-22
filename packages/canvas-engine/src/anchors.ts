@@ -61,6 +61,38 @@ export function getDefaultConnectorCurveControl(start: Point, end: Point, startA
   };
 }
 
+function getAnchorDirection(anchor: AnchorId): Point {
+  switch (anchor) {
+    case 'north':
+      return { x: 0, y: -1 };
+    case 'east':
+      return { x: 1, y: 0 };
+    case 'south':
+      return { x: 0, y: 1 };
+    case 'west':
+      return { x: -1, y: 0 };
+  }
+}
+
+function normalizeDirection(point: Point): Point {
+  const length = Math.hypot(point.x, point.y) || 1;
+  return {
+    x: point.x / length,
+    y: point.y / length,
+  };
+}
+
+function getEndpointCurveDirection(endpoint: ConnectorEndpoint, point: Point, oppositePoint: Point): Point {
+  if (endpoint.kind === 'attached') {
+    return getAnchorDirection(endpoint.anchor);
+  }
+
+  return normalizeDirection({
+    x: oppositePoint.x - point.x,
+    y: oppositePoint.y - point.y,
+  });
+}
+
 export function getConnectorCurveControlHandle(node: ConnectorNode, board: BoardDoc): Point | null {
   if (getConnectorPathMode(node) !== 'curve') {
     return null;
@@ -82,17 +114,60 @@ export function getConnectorCurveControlHandle(node: ConnectorNode, board: Board
   );
 }
 
-function sampleQuadraticCurve(start: Point, control: Point, end: Point, segments = 20): Point[] {
+function sampleCubicCurve(start: Point, control1: Point, control2: Point, end: Point, segments = 24): Point[] {
   const points: Point[] = [];
   for (let index = 0; index <= segments; index += 1) {
     const t = index / segments;
     const mt = 1 - t;
     points.push({
-      x: mt * mt * start.x + 2 * mt * t * control.x + t * t * end.x,
-      y: mt * mt * start.y + 2 * mt * t * control.y + t * t * end.y,
+      x:
+        mt * mt * mt * start.x +
+        3 * mt * mt * t * control1.x +
+        3 * mt * t * t * control2.x +
+        t * t * t * end.x,
+      y:
+        mt * mt * mt * start.y +
+        3 * mt * mt * t * control1.y +
+        3 * mt * t * t * control2.y +
+        t * t * t * end.y,
     });
   }
   return points;
+}
+
+function getConnectorCurveBezierControls(
+  node: ConnectorNode,
+  board: BoardDoc,
+): { control1: Point; control2: Point } | null {
+  const points = resolveConnectorPoints(node, board);
+  const bend = getConnectorCurveControlHandle(node, board);
+  if (!points || !bend) {
+    return null;
+  }
+
+  const midpoint = {
+    x: (points.start.x + points.end.x) / 2,
+    y: (points.start.y + points.end.y) / 2,
+  };
+  const bendOffset = {
+    x: bend.x - midpoint.x,
+    y: bend.y - midpoint.y,
+  };
+  const distance = Math.hypot(points.end.x - points.start.x, points.end.y - points.start.y) || 1;
+  const handleLength = Math.min(Math.max(distance * 0.35, 48), 180);
+  const startDirection = getEndpointCurveDirection(node.start, points.start, points.end);
+  const endDirection = getEndpointCurveDirection(node.end, points.end, points.start);
+
+  return {
+    control1: {
+      x: points.start.x + startDirection.x * handleLength + bendOffset.x * 0.6,
+      y: points.start.y + startDirection.y * handleLength + bendOffset.y * 0.6,
+    },
+    control2: {
+      x: points.end.x + endDirection.x * handleLength + bendOffset.x * 0.6,
+      y: points.end.y + endDirection.y * handleLength + bendOffset.y * 0.6,
+    },
+  };
 }
 
 export function isAttachedConnectorEndpoint(endpoint: ConnectorEndpoint): endpoint is AttachedConnectorEndpoint {
@@ -237,11 +312,11 @@ export function resolveConnectorPathPoints(node: ConnectorNode, board: BoardDoc)
   }
 
   if (getConnectorPathMode(node) === 'curve') {
-    const control = getConnectorCurveControlHandle(node, board);
-    if (!control) {
+    const controls = getConnectorCurveBezierControls(node, board);
+    if (!controls) {
       return [points.start, points.end];
     }
-    return sampleQuadraticCurve(points.start, control, points.end);
+    return sampleCubicCurve(points.start, controls.control1, controls.control2, points.end);
   }
 
   return [points.start, ...getConnectorWaypointHandles(node), points.end];

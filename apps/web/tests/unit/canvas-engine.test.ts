@@ -2275,6 +2275,9 @@ describe('canvas engine', () => {
       end: { kind: 'attached', nodeId: 'node_rect_b', anchor: 'west' },
     });
     expect(curvedConnector.curveControl).toBeTruthy();
+    const curvedPath = resolveConnectorPathPoints(curvedConnector, createdProject.board);
+    expect(curvedPath).toBeTruthy();
+    expect(Math.min(...(curvedPath ?? []).map((point) => point.y))).toBeLessThan(80);
 
     const editController = createController(createdProject, 'draft_connector', 'select');
     const control = curvedConnector.curveControl as { x: number; y: number };
