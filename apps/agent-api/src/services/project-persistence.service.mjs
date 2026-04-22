@@ -176,7 +176,7 @@ export function createProjectPersistenceService({
       const { data, error } = await getClient()
         .from(tableName)
         .select('id, owner_id, title, created_at, updated_at')
-        .order('updated_at', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (error) {
         throw new ProjectPersistenceStorageError('Failed to list project summaries.', error);

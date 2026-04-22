@@ -28,8 +28,8 @@ export function createProjectSummary(
 }
 
 function compareSummaries(a: ProjectSummary, b: ProjectSummary): number {
-  const aTime = Date.parse(a.lastOpenedAt ?? a.updatedAt ?? a.createdAt ?? '0');
-  const bTime = Date.parse(b.lastOpenedAt ?? b.updatedAt ?? b.createdAt ?? '0');
+  const aTime = Date.parse(a.createdAt ?? '0');
+  const bTime = Date.parse(b.createdAt ?? '0');
   return bTime - aTime;
 }
 

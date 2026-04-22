@@ -8,6 +8,7 @@ import { useAgentChat } from './useAgentChat';
 import { mergeTranscriptIntoDraft, useVoiceComposer } from './useVoiceComposer';
 import { appendMessagesToSession, createChatSession, getActiveChatSession, updateActiveSession, updateSessionById } from '../session-state';
 import { deriveCurrentTask, deriveSessionHistoryEntries } from '../deriveCurrentTask';
+import { dedupeChatSuggestions } from '../mappers/chat-mapper';
 import type { AgentResponseData } from '../mappers/chat-mapper';
 import { replaceProjectNoHistory } from '../../../state/store';
 import type { CanvasNode, CanvasProject, CanvasStoreState, ChatSession } from '../../../types/canvas';
@@ -78,7 +79,7 @@ export function useChatSidebarController({
         setLatestResponseDataBySession((prev) => ({
           ...prev,
           [targetSessionId]: {
-            suggestions: [...(prev[targetSessionId]?.suggestions ?? []), ...(responseData?.suggestions ?? [])],
+            suggestions: dedupeChatSuggestions([...(prev[targetSessionId]?.suggestions ?? []), ...(responseData?.suggestions ?? [])]),
             effects: [...(prev[targetSessionId]?.effects ?? []), ...(responseData?.effects ?? [])],
             conversationId: responseData?.conversationId ?? prev[targetSessionId]?.conversationId,
             previousResponseId: responseData?.previousResponseId ?? prev[targetSessionId]?.previousResponseId,
@@ -100,7 +101,7 @@ export function useChatSidebarController({
                   didUpdateAssistant = true;
                   return {
                     ...message,
-                    suggestions: [...(message.suggestions ?? []), ...(responseData?.suggestions ?? [])],
+                    suggestions: dedupeChatSuggestions([...(message.suggestions ?? []), ...(responseData?.suggestions ?? [])]),
                     effects: [...(message.effects ?? []), ...(responseData?.effects ?? [])],
                   };
                 })
@@ -138,7 +139,7 @@ export function useChatSidebarController({
             ? updateSessionById(prev.project, targetSessionId, (session) => ({
                 ...appendMessagesToSession(session, {
                   ...message,
-                  suggestions: responseData?.suggestions ?? message.suggestions,
+                  suggestions: dedupeChatSuggestions(responseData?.suggestions ?? message.suggestions),
                   effects: responseData?.effects ?? message.effects ?? [],
                 }),
                 title:
@@ -155,7 +156,12 @@ export function useChatSidebarController({
       if (targetSessionId) {
         setLatestResponseDataBySession((prev) => ({
           ...prev,
-          [targetSessionId]: responseData ?? prev[targetSessionId] ?? null,
+          [targetSessionId]: responseData
+            ? {
+                ...responseData,
+                suggestions: dedupeChatSuggestions(responseData.suggestions),
+              }
+            : (prev[targetSessionId] ?? null),
         }));
       }
     },

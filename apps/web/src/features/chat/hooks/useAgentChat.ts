@@ -4,7 +4,7 @@ import { DefaultChatTransport } from 'ai';
 import type { AgentChatRequest } from '@infinite-canvas/shared/api';
 import type { ChatMessage } from '@infinite-canvas/shared/chat';
 import { getAgentChatApiUrl } from '../api/chat-client';
-import { extractAgentResponseData, toLocalChatMessage, toUIMessage } from '../mappers/chat-mapper';
+import { dedupeChatSuggestions, extractAgentResponseData, toLocalChatMessage, toUIMessage } from '../mappers/chat-mapper';
 import type { AgentUIMessage } from '../mappers/chat-mapper';
 
 function logChat(event: string, payload: Record<string, unknown> = {}) {
@@ -47,7 +47,10 @@ export function useAgentChat({ initialMessages, onResponseData, onAssistantFinis
       }
 
       const nextResponseData = {
-        suggestions: [...(latestResponseDataRef.current?.suggestions ?? []), ...(dataPart.data?.suggestions ?? [])],
+        suggestions: dedupeChatSuggestions([
+          ...(latestResponseDataRef.current?.suggestions ?? []),
+          ...(dataPart.data?.suggestions ?? []),
+        ]),
         effects: [...(latestResponseDataRef.current?.effects ?? []), ...(dataPart.data?.effects ?? [])],
         conversationId: dataPart.data?.conversationId ?? latestResponseDataRef.current?.conversationId,
         previousResponseId: dataPart.data?.previousResponseId ?? latestResponseDataRef.current?.previousResponseId,

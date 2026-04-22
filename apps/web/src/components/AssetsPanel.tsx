@@ -70,11 +70,16 @@ export function AssetsPanel({ assets, isOpen, fileInputRef, onToggle, onUpload, 
           className="asset-sidebar-rail"
           type="button"
           onClick={onToggle}
+          aria-label="展开素材管理"
           aria-expanded="false"
           aria-controls="asset-sidebar-panel"
         >
-          <span>展开</span>
-          <strong>素材管理</strong>
+          <span className="asset-sidebar-rail-icon" aria-hidden="true">
+            ▧
+          </span>
+          <span className="asset-sidebar-rail-count" aria-hidden="true">
+            {assets.length}
+          </span>
         </button>
       </aside>
     );

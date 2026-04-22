@@ -66,6 +66,70 @@ describe('AgentSidebar', () => {
     expect(onSuggestion).toHaveBeenCalledWith('generate-variants');
   });
 
+  it('renders duplicate assistant suggestions once', () => {
+    render(
+      <AgentSidebar
+        isOpen
+        sessionCount={1}
+        sessions={[
+          createSession({
+            messages: [
+              { id: 'u1', role: 'user', text: '生成一张海报', createdAt: 1, suggestions: [] },
+              {
+                id: 'a1',
+                role: 'assistant',
+                text: '可以继续优化。',
+                createdAt: 2,
+                suggestions: [
+                  { id: 'suggest-variants', label: '生成系列海报', action: 'generate-variants' },
+                  { id: 'suggest-variants', label: '生成系列海报', action: 'generate-variants' },
+                  { id: 'suggest-add-text', label: '添加宣传文字', action: 'add-text' },
+                ],
+                effects: [],
+              },
+            ],
+          }),
+        ]}
+        sessionHistory={[]}
+        activeSessionId="session_active"
+        activeSession={createSession({
+          messages: [
+            { id: 'u1', role: 'user', text: '生成一张海报', createdAt: 1, suggestions: [] },
+            {
+              id: 'a1',
+              role: 'assistant',
+              text: '可以继续优化。',
+              createdAt: 2,
+              suggestions: [
+                { id: 'suggest-variants', label: '生成系列海报', action: 'generate-variants' },
+                { id: 'suggest-variants', label: '生成系列海报', action: 'generate-variants' },
+                { id: 'suggest-add-text', label: '添加宣传文字', action: 'add-text' },
+              ],
+              effects: [],
+            },
+          ],
+        })}
+        currentTask={null}
+        streamingAssistantMessage={null}
+        streamingEffects={[]}
+        chatInput=""
+        composerStatusText="可继续输入"
+        voiceButtonLabel="录音"
+        voiceComposer={{ status: 'idle', errorMessage: null, toggleRecording: vi.fn().mockResolvedValue(undefined) }}
+        chatThreadRef={{ current: null }}
+        onCreateSession={vi.fn()}
+        onActivateSession={vi.fn()}
+        onClose={vi.fn()}
+        onChatInputChange={vi.fn()}
+        onSubmitChat={vi.fn()}
+        onSuggestion={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByRole('button', { name: '生成系列海报' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: '添加宣传文字' })).toBeTruthy();
+  });
+
   it('shows streaming assistant text as plain text instead of parsing markdown early', () => {
     render(
       <AgentSidebar
@@ -135,7 +199,7 @@ describe('AgentSidebar', () => {
                   {
                     type: 'insert-image',
                     prompt: '艺术海报',
-                    imageUrl: 'https://example.com/poster.png',
+                    imageUrl: 'https://media.example.com/generated/poster.png',
                     width: 1024,
                     height: 1024,
                   },
@@ -159,7 +223,7 @@ describe('AgentSidebar', () => {
                 {
                   type: 'insert-image',
                   prompt: '艺术海报',
-                  imageUrl: 'https://example.com/poster.png',
+                  imageUrl: 'https://media.example.com/generated/poster.png',
                   width: 1024,
                   height: 1024,
                 },
@@ -185,7 +249,7 @@ describe('AgentSidebar', () => {
     );
 
     const image = screen.getByRole('img', { name: '艺术海报' });
-    expect(image.getAttribute('src')).toBe('https://example.com/poster.png');
+    expect(image.getAttribute('src')).toBe('https://media.example.com/generated/poster.png');
   });
 
   it('shows a media placeholder inside the streaming assistant message while image generation is in progress', () => {

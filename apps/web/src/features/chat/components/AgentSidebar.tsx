@@ -8,6 +8,7 @@ import { PlainTextMessageBody } from './PlainTextMessageBody';
 import { useTypewriterText } from '../hooks/useTypewriterText';
 import type { VoiceComposerStatus } from '../hooks/useVoiceComposer';
 import type { AgentEffect } from '@infinite-canvas/shared/tool-effects';
+import { dedupeChatSuggestions } from '../mappers/chat-mapper';
 
 interface VoiceComposerViewModel {
   status: VoiceComposerStatus;
@@ -103,13 +104,15 @@ export function AgentSidebar({
     displayedStreamingText.length < latestPersistedAssistantMessage.text.length;
 
   function renderSuggestionChips(messageSuggestions: ChatSuggestion[]) {
-    if (!messageSuggestions.length) {
+    const uniqueSuggestions = dedupeChatSuggestions(messageSuggestions);
+
+    if (!uniqueSuggestions.length) {
       return null;
     }
 
     return (
       <div className="chat-suggestions">
-        {messageSuggestions.map((suggestion) => (
+        {uniqueSuggestions.map((suggestion) => (
           <button
             key={suggestion.id}
             className="chat-suggestion-btn"

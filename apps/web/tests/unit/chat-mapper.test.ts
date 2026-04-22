@@ -52,14 +52,14 @@ describe('chat mapper', () => {
               {
                 type: 'insert-image' as const,
                 prompt: 'poster',
-                imageUrl: 'https://example.com/image.jpg',
+                imageUrl: 'https://media.example.com/generated/image.jpg',
                 width: 1280,
                 height: 720,
               },
               {
                 type: 'insert-video' as const,
                 prompt: 'hero motion',
-                videoUrl: 'https://example.com/video.mp4',
+                videoUrl: 'https://media.example.com/generated/video.mp4',
                 width: 1920,
                 height: 1080,
                 durationSeconds: 8,
@@ -79,18 +79,51 @@ describe('chat mapper', () => {
       {
         type: 'insert-image',
         prompt: 'poster',
-        imageUrl: 'https://example.com/image.jpg',
+        imageUrl: 'https://media.example.com/generated/image.jpg',
         width: 1280,
         height: 720,
       },
       {
         type: 'insert-video',
         prompt: 'hero motion',
-        videoUrl: 'https://example.com/video.mp4',
+        videoUrl: 'https://media.example.com/generated/video.mp4',
         width: 1920,
         height: 1080,
         durationSeconds: 8,
       },
     ]);
+  });
+
+  it('deduplicates suggestions by id when response data is merged', () => {
+    const message = {
+      id: 'assistant_3',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: '可以继续调整。' },
+        {
+          type: 'data-agentResponse',
+          data: {
+            suggestions: [{ id: 'suggest-variants', label: '生成系列海报', action: 'generate-variants' as const }],
+            effects: [],
+          },
+        },
+        {
+          type: 'data-agentResponse',
+          data: {
+            suggestions: [
+              { id: 'suggest-variants', label: '生成系列海报', action: 'generate-variants' as const },
+              { id: 'suggest-add-text', label: '添加宣传文字', action: 'add-text' as const },
+            ],
+            effects: [],
+          },
+        },
+      ],
+    };
+
+    const mapped = toLocalChatMessage(message);
+    const responseData = extractAgentResponseData(message);
+
+    expect(mapped.suggestions.map((suggestion) => suggestion.id)).toEqual(['suggest-variants', 'suggest-add-text']);
+    expect(responseData?.suggestions.map((suggestion) => suggestion.id)).toEqual(['suggest-variants', 'suggest-add-text']);
   });
 });

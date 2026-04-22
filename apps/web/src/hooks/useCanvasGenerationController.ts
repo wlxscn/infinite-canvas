@@ -131,25 +131,62 @@ export function useCanvasGenerationController({
   }, [selectedId]);
 
   function updateVideoFrame(assetId: string, frameSrc: string): void {
-    setState((prev) =>
-      replaceProjectNoHistory(prev, {
+    setState((prev) => {
+      const before = prev.project.assets.find((asset) => asset.id === assetId);
+      const shouldUpdate = before?.type === 'video' && !before.frameSrc;
+      console.debug('[video-frame] asset update requested', {
+        assetId,
+        found: !!before,
+        assetType: before?.type,
+        hadFrameSrc: !!before?.frameSrc,
+        shouldUpdate,
+        frameSrcLength: frameSrc.length,
+      });
+
+      return replaceProjectNoHistory(prev, {
         ...prev.project,
         assets: prev.project.assets.map((asset) =>
           asset.id === assetId && asset.type === 'video' && !asset.frameSrc ? { ...asset, frameSrc } : asset,
         ),
-      }),
-    );
+      });
+    });
   }
 
   function captureVideoAssetFrame(asset: AssetRecord): void {
     if (asset.type !== 'video' || asset.frameSrc) {
+      console.debug('[video-frame] asset skipped', {
+        assetId: asset.id,
+        type: asset.type,
+        hasFrameSrc: !!asset.frameSrc,
+      });
       return;
     }
 
-    void captureVideoFrame(asset.src)
-      .then((frameSrc) => updateVideoFrame(asset.id, frameSrc))
+    console.debug('[video-frame] asset capture queued', {
+      assetId: asset.id,
+      name: asset.name,
+      srcLength: asset.src.length,
+      srcPrefix: asset.src.slice(0, 96),
+      width: asset.width,
+      height: asset.height,
+      durationSeconds: asset.durationSeconds,
+      origin: asset.origin,
+    });
+
+    void captureVideoFrame(asset.src, { debugLabel: asset.id })
+      .then((frameSrc) => {
+        console.debug('[video-frame] asset capture succeeded', {
+          assetId: asset.id,
+          frameSrcLength: frameSrc.length,
+        });
+        updateVideoFrame(asset.id, frameSrc);
+      })
       .catch((error) => {
-        console.warn('Failed to capture video frame preview', error);
+        console.warn('[video-frame] asset capture failed', {
+          assetId: asset.id,
+          name: asset.name,
+          error,
+        });
       });
   }
 

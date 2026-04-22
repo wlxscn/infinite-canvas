@@ -176,7 +176,7 @@ test('project persistence service saves a project snapshot with upsert', async (
   assert.deepEqual(client.calls[1], ['upsert', { id: PROJECT_ID, data: project }, { onConflict: 'id' }]);
 });
 
-test('project persistence service lists project summaries by updated time', async () => {
+test('project persistence service lists project summaries by created time', async () => {
   const client = createMockClient({
     selectResult: {
       data: [
@@ -212,7 +212,7 @@ test('project persistence service lists project summaries by updated time', asyn
   assert.deepEqual(client.calls.slice(0, 3), [
     ['from', 'projects'],
     ['select', 'id, owner_id, title, created_at, updated_at'],
-    ['order', 'updated_at', { ascending: false }],
+    ['order', 'created_at', { ascending: false }],
   ]);
 });
 

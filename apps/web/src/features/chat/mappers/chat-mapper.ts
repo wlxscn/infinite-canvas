@@ -17,6 +17,19 @@ export type AgentUIData = {
 
 export type AgentUIMessage = UIMessage<unknown, AgentUIData>;
 
+export function dedupeChatSuggestions(suggestions: ChatSuggestion[]): ChatSuggestion[] {
+  const seenSuggestionIds = new Set<string>();
+
+  return suggestions.filter((suggestion) => {
+    if (seenSuggestionIds.has(suggestion.id)) {
+      return false;
+    }
+
+    seenSuggestionIds.add(suggestion.id);
+    return true;
+  });
+}
+
 export function toUIMessage(message: ChatMessage): AgentUIMessage {
   return {
     id: message.id,
@@ -39,7 +52,7 @@ export function toLocalChatMessage(message: AgentUIMessage): ChatMessage {
     role: message.role === 'assistant' ? 'assistant' : 'user',
     text,
     createdAt: Date.now(),
-    suggestions: responseData?.suggestions ?? [],
+    suggestions: dedupeChatSuggestions(responseData?.suggestions ?? []),
     effects: responseData?.effects ?? [],
   };
 }
@@ -55,7 +68,7 @@ export function extractAgentResponseData(message: AgentUIMessage): AgentResponse
 
   return dataParts.reduce<AgentResponseData>(
     (merged, part) => ({
-      suggestions: [...merged.suggestions, ...(part.data?.suggestions ?? [])],
+      suggestions: dedupeChatSuggestions([...merged.suggestions, ...(part.data?.suggestions ?? [])]),
       effects: [...merged.effects, ...(part.data?.effects ?? [])],
       conversationId: part.data?.conversationId ?? merged.conversationId,
       previousResponseId: part.data?.previousResponseId ?? merged.previousResponseId,
@@ -75,7 +88,7 @@ export function buildAgentRequestBody(request: AgentChatRequest) {
 
 export function readAgentResponse(response: AgentChatResponse): AgentResponseData {
   return {
-    suggestions: response.assistantMessage.suggestions,
+    suggestions: dedupeChatSuggestions(response.assistantMessage.suggestions),
     effects: response.effects,
     conversationId: response.conversationId,
     previousResponseId: response.previousResponseId,
