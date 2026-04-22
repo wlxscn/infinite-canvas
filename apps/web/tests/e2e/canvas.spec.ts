@@ -706,11 +706,17 @@ test('rotated groups can be dissolved while preserving child rotation and connec
   }
 
   await page.mouse.click(box.x + 72, box.y + 72);
+  await expect(page.getByRole('button', { name: '拆分组' })).toBeVisible();
+  await page.waitForTimeout(50);
   await page.mouse.move(box.x + 180, box.y + 36);
   await page.mouse.down();
   await page.mouse.move(box.x + 240, box.y + 150, { steps: 12 });
   await page.mouse.up();
-  await page.waitForTimeout(300);
+  await page.waitForFunction(() => {
+    const project = JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}');
+    const group = project.board?.nodes?.find((node: { id: string }) => node.id === 'group_seed');
+    return typeof group?.rotation === 'number' && Math.abs(group.rotation) > 1;
+  });
 
   let project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
   const group = project.board.nodes.find((node: { id: string }) => node.id === 'group_seed');
@@ -792,7 +798,7 @@ test('connector tool creates anchored connectors, supports reattachment, and per
   expect(connector.end).toEqual({ kind: 'attached', nodeId: 'node_rect_c', anchor: 'west' });
 });
 
-test('connector anchors appear only for the proximate node and active group hides external targets', async ({ page }) => {
+test('connector anchors appear only for the proximate node', async ({ page }) => {
   await page.addInitScript(([storageKey, project]) => {
     if (window.sessionStorage.getItem('__seeded_project__') === 'true') {
       return;
@@ -826,12 +832,14 @@ test('connector anchors appear only for the proximate node and active group hide
 
   await page.mouse.move(box.x + 520, box.y + 360);
   await expect(anchors).toHaveCount(0);
+});
 
+test('active group connector mode hides external targets', async ({ page }) => {
   await page.addInitScript(([storageKey, project]) => {
     window.localStorage.setItem(storageKey, JSON.stringify(project));
     window.sessionStorage.setItem('__seeded_project__', 'true');
   }, [STORAGE_KEY, createGroupedRotationSeedProject()]);
-  await page.reload();
+  await page.goto('/');
 
   const groupedCanvas = page.locator('canvas');
   const groupedBox = await groupedCanvas.boundingBox();
@@ -842,7 +850,9 @@ test('connector anchors appear only for the proximate node and active group hide
   }
 
   await page.getByRole('button', { name: '选择' }).click();
-  await page.mouse.click(groupedBox.x + 120, groupedBox.y + 120);
+  await page.waitForTimeout(50);
+  await page.mouse.click(groupedBox.x + 72, groupedBox.y + 72);
+  await expect(page.getByRole('button', { name: '进入' })).toBeVisible();
   await page.getByRole('button', { name: '进入' }).click();
   await page.waitForTimeout(250);
 
