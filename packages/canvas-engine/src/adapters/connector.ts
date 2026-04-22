@@ -56,6 +56,12 @@ export const connectorNodeAdapter: NodeAdapter<ConnectorNode, BoardDoc, CanvasRe
         x: point.x + delta.x,
         y: point.y + delta.y,
       })),
+      curveControl: node.curveControl
+        ? {
+            x: node.curveControl.x + delta.x,
+            y: node.curveControl.y + delta.y,
+          }
+        : undefined,
       start:
         node.start.kind === 'free'
           ? {

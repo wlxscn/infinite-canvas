@@ -35,6 +35,13 @@ export function ToolDock({
           >
             折线
           </button>
+          <button
+            type="button"
+            className={connectorPathMode === 'curve' ? 'connector-mode-btn active' : 'connector-mode-btn'}
+            onClick={() => onSelectConnectorPathMode('curve')}
+          >
+            曲线
+          </button>
         </div>
       ) : null}
 

@@ -11,13 +11,17 @@ export interface Point {
 
 export type AnchorId = 'north' | 'east' | 'south' | 'west';
 
-export interface RectNode {
-  id: string;
-  type: 'rect';
+export interface RotatableBoxNode {
   x: number;
   y: number;
   w: number;
   h: number;
+  rotation?: number;
+}
+
+export interface RectNode extends RotatableBoxNode {
+  id: string;
+  type: 'rect';
   stroke: string;
   fill?: string;
 }
@@ -30,49 +34,33 @@ export interface FreehandNode {
   width: number;
 }
 
-export interface TextNode {
+export interface TextNode extends RotatableBoxNode {
   id: string;
   type: 'text';
-  x: number;
-  y: number;
-  w: number;
-  h: number;
   text: string;
   color: string;
   fontSize: number;
   fontFamily: string;
 }
 
-export interface ImageNode {
+export interface ImageNode extends RotatableBoxNode {
   id: string;
   type: 'image';
-  x: number;
-  y: number;
-  w: number;
-  h: number;
   assetId: string;
 }
 
-export interface VideoNode {
+export interface VideoNode extends RotatableBoxNode {
   id: string;
   type: 'video';
-  x: number;
-  y: number;
-  w: number;
-  h: number;
   assetId: string;
 }
 
 export type BoxNode = RectNode | TextNode | ImageNode | VideoNode;
 export type GroupChildNode = RectNode | FreehandNode | TextNode | ImageNode | VideoNode;
 
-export interface GroupNode {
+export interface GroupNode extends RotatableBoxNode {
   id: string;
   type: 'group';
-  x: number;
-  y: number;
-  w: number;
-  h: number;
   children: GroupChildNode[];
   name?: string;
 }
@@ -91,7 +79,7 @@ export interface FreeConnectorEndpoint {
 
 export type ConnectorEndpoint = AttachedConnectorEndpoint | FreeConnectorEndpoint;
 
-export type ConnectorPathMode = 'straight' | 'polyline';
+export type ConnectorPathMode = 'straight' | 'polyline' | 'curve';
 
 export interface ConnectorNode {
   id: string;
@@ -102,6 +90,7 @@ export interface ConnectorNode {
   width: number;
   pathMode?: ConnectorPathMode;
   waypoints?: Point[];
+  curveControl?: Point;
 }
 
 export type CanvasNode =

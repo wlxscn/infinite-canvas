@@ -22,9 +22,12 @@ export type {
 } from './model';
 export {
   findAnchorTarget,
+  findProximateConnectorNode,
   getConnectorPathMode,
   getConnectorWaypointHandles,
   getDefaultConnectorWaypoints,
+  getDefaultConnectorCurveControl,
+  getConnectorCurveControlHandle,
   getAnchorPoint,
   getNodeAnchors,
   isAttachedConnectorEndpoint,
@@ -45,6 +48,7 @@ export {
   getNodeById as getHierarchicalNodeById,
   getNodeParentGroupId,
   getNodeWorldOffset,
+  getNodeWorldBounds,
   getNodesInContext,
   isGroupNode,
   moveNodeOutOfGroup,
@@ -54,6 +58,7 @@ export {
   sendNodeBackward as sendHierarchicalNodeBackward,
   upsertNode as upsertHierarchicalNode,
   worldPointToGroupLocal,
+  worldDeltaToGroupLocal,
   worldPointToNodeLocal,
 } from './hierarchy';
 export { boundsFromPoints, distanceToSegment, normalizeBounds, pointInBounds, type Bounds } from './geometry';
@@ -85,9 +90,11 @@ export {
   getCanvasNodeBounds,
   getNodeAdapter,
   getNodeAdapterRegistry,
+  hitCanvasNodeRotateHandle,
   hitCanvasNodeResizeHandle,
   hitTestCanvasNode,
   pickTopCanvasNode,
+  rotateCanvasNode,
   resizeCanvasNode,
   translateCanvasNode,
   type CanvasAssetRecord,

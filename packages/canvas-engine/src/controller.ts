@@ -2,22 +2,30 @@ import {
   getCanvasNodeBounds,
   clampScale,
   findAnchorTarget,
+  findProximateConnectorNode,
   getAllDescendantNodes,
+  getConnectorCurveControlHandle,
   getConnectorPathMode,
   getConnectorWaypointHandles,
+  getDefaultConnectorCurveControl,
   getDefaultConnectorWaypoints,
   getNodesInContext,
+  getNodeParentGroupId,
   hitCanvasNodeResizeHandle,
+  hitCanvasNodeRotateHandle,
   isConnectorNode,
   maybeAppendPoint,
   normalizeBounds,
   pickTopCanvasNode,
+  rotateCanvasNode,
   resizeCanvasNode,
   resolveConnectorEndpoint,
   resolveConnectorPoints,
+  resolveNodeToWorld,
   scaleTolerance,
   screenToWorld,
   translateCanvasNode,
+  worldDeltaToGroupLocal,
   worldPointToGroupLocal,
   worldPointToNodeLocal,
   zoomAtScreenPoint,
@@ -43,6 +51,7 @@ import type {
 import { computeDragSnap } from './snap';
 
 const RESIZE_HANDLE_SIZE = 14;
+const ROTATE_HANDLE_SIZE = 14;
 const WHEEL_COMMIT_DELAY_MS = 80;
 
 export interface CanvasProjectLike {
@@ -125,6 +134,10 @@ function isResizeHandleHit(node: CanvasNode, point: Point, scale: number, board:
   return hitCanvasNodeResizeHandle(node, point, scale, RESIZE_HANDLE_SIZE, board);
 }
 
+function isRotateHandleHit(node: CanvasNode, point: Point, scale: number, board: BoardDoc): boolean {
+  return hitCanvasNodeRotateHandle(node, point, scale, ROTATE_HANDLE_SIZE, board);
+}
+
 function hitConnectorHandle(
   node: ConnectorNode,
   point: Point,
@@ -150,6 +163,11 @@ function hitConnectorHandle(
     if (Math.hypot(waypoint.x - point.x, waypoint.y - point.y) <= tolerance) {
       return { kind: 'waypoint', index };
     }
+  }
+
+  const curveControl = getConnectorCurveControlHandle(node, board);
+  if (curveControl && Math.hypot(curveControl.x - point.x, curveControl.y - point.y) <= tolerance) {
+    return { kind: 'curve-control' };
   }
   return null;
 }
@@ -242,6 +260,12 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       ...projectRef,
       board,
     };
+  }
+
+  function commitProject(nextProject: TProject): void {
+    projectRef = nextProject;
+    boardRef = nextProject.board;
+    options.onCommitProject(nextProject);
   }
 
   function selectNode(id: string | null, selectOptions?: SelectOptions): void {
@@ -338,6 +362,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       snapGuides: [],
       draftConnector: null,
       hoveredNodeId: null,
+      proximateConnectorNodeId: null,
       hoveredAnchor: null,
       activeConnectorHandle: null,
       selectionBox: null,
@@ -364,6 +389,42 @@ export function createCanvasInteractionController<TProject extends CanvasProject
     renderCurrent();
   }
 
+  function updateProximateConnectorNode(nodeId: string | null): void {
+    if (state.proximateConnectorNodeId === nodeId) {
+      return;
+    }
+    updateState({ proximateConnectorNodeId: nodeId });
+    renderCurrent();
+  }
+
+  function getConnectorContextNodes(board: BoardDoc): CanvasNode[] {
+    return getNodesInContext(board, getActiveGroupId());
+  }
+
+  function getConnectorTargets(
+    board: BoardDoc,
+    worldPoint: Point,
+    options: { excludeNodeId?: string; excludeConnectorId?: string } = {},
+  ): { proximateNodeId: string | null; anchor: AnchorTargetLike | null } {
+    const contextNodes = getConnectorContextNodes(board);
+    const proximateNode = findProximateConnectorNode(
+      contextNodes,
+      worldPoint,
+      scaleTolerance(24, board.viewport.scale),
+      board,
+      options,
+    );
+    const anchor = findAnchorTarget(contextNodes, worldPoint, scaleTolerance(12, board.viewport.scale), {
+      ...options,
+      boardNodes: board.nodes,
+    });
+
+    return {
+      proximateNodeId: proximateNode?.id ?? null,
+      anchor,
+    };
+  }
+
   function beginPinchIfNeeded(): void {
     if (touchPoints.size < 2) {
       return;
@@ -386,6 +447,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       draftFreehand: null,
       draftConnector: null,
       hoveredNodeId: null,
+      proximateConnectorNodeId: null,
       hoveredAnchor: null,
       activeConnectorHandle: null,
       selectionBox: null,
@@ -404,12 +466,37 @@ export function createCanvasInteractionController<TProject extends CanvasProject
     setMode(mode);
   }
 
+  function getParentGroupRotation(board: BoardDoc, nodeId: string): number {
+    const parentGroupId = getNodeParentGroupId(board.nodes, nodeId);
+    if (!parentGroupId) {
+      return 0;
+    }
+    const parentGroup = options.getNodeById(board.nodes, parentGroupId);
+    return parentGroup && parentGroup.type === 'group' ? (parentGroup.rotation ?? 0) : 0;
+  }
+
+  function getResolvedNodeRotationInfo(board: BoardDoc, node: CanvasNode): { center: Point; rotation: number } | null {
+    if (isConnectorNode(node) || node.type === 'freehand') {
+      return null;
+    }
+
+    const resolved = resolveNodeToWorld(node, board);
+    return {
+      center: {
+        x: resolved.x + resolved.w / 2,
+        y: resolved.y + resolved.h / 2,
+      },
+      rotation: resolved.rotation ?? 0,
+    };
+  }
+
   function withConnectorPreviewPath(node: ConnectorNode, board: BoardDoc): ConnectorNode {
-    if (getConnectorPathMode(node) !== 'polyline') {
+    if (getConnectorPathMode(node) === 'straight') {
       return {
         ...node,
         pathMode: 'straight',
         waypoints: [],
+        curveControl: undefined,
       };
     }
 
@@ -418,15 +505,31 @@ export function createCanvasInteractionController<TProject extends CanvasProject
     if (!start || !end) {
       return {
         ...node,
-        pathMode: 'polyline',
+        pathMode: getConnectorPathMode(node),
       };
     }
 
     const endAnchor = node.end.kind === 'attached' ? node.end.anchor : undefined;
 
+    if (getConnectorPathMode(node) === 'curve') {
+      return {
+        ...node,
+        pathMode: 'curve',
+        waypoints: [],
+        curveControl:
+          node.curveControl ??
+          getDefaultConnectorCurveControl(
+            start,
+            end,
+            node.start.kind === 'attached' ? node.start.anchor : undefined,
+          ),
+      };
+    }
+
     return {
       ...node,
       pathMode: 'polyline',
+      curveControl: undefined,
       waypoints: getDefaultConnectorWaypoints(
         start,
         end,
@@ -513,11 +616,17 @@ export function createCanvasInteractionController<TProject extends CanvasProject
                 connectorHandle.kind === 'endpoint' ? 'editing-connector-end' : 'editing-connector-waypoint',
               draftConnector: selectedNode,
               hoveredNodeId: null,
+              proximateConnectorNodeId: null,
               hoveredAnchor: null,
               activeConnectorHandle: connectorHandle,
             });
             return;
           }
+        }
+
+        if (selectedNode && !isConnectorNode(selectedNode) && isRotateHandleHit(selectedNode, worldPoint, currentBoard.viewport.scale, currentBoard)) {
+          startNodeInteraction('rotating-node', selectedNode.id, worldPoint);
+          return;
         }
 
         if (selectedNode && !isConnectorNode(selectedNode) && isResizeHandleHit(selectedNode, worldPoint, currentBoard.viewport.scale, currentBoard)) {
@@ -539,6 +648,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
               globalConnectorHandle.handle.kind === 'endpoint' ? 'editing-connector-end' : 'editing-connector-waypoint',
             draftConnector: globalConnectorHandle.node,
             hoveredNodeId: null,
+            proximateConnectorNodeId: null,
             hoveredAnchor: null,
             activeConnectorHandle: globalConnectorHandle.handle,
           });
@@ -557,6 +667,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
                 connectorHandle.kind === 'endpoint' ? 'editing-connector-end' : 'editing-connector-waypoint',
               draftConnector: pickedNode,
               hoveredNodeId: null,
+              proximateConnectorNodeId: null,
               hoveredAnchor: null,
               activeConnectorHandle: connectorHandle,
             });
@@ -579,6 +690,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
             current: worldPoint,
           },
           hoveredNodeId: null,
+          proximateConnectorNodeId: null,
           hoveredAnchor: null,
         });
         return;
@@ -591,6 +703,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
           pointerMode: 'drawing-rect',
           draftRect: options.createRectNode(localPoint),
           hoveredNodeId: null,
+          proximateConnectorNodeId: null,
           hoveredAnchor: null,
           selectionBox: null,
         });
@@ -604,6 +717,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
           pointerMode: 'drawing-freehand',
           draftFreehand: options.createFreehandNode(localPoint),
           hoveredNodeId: null,
+          proximateConnectorNodeId: null,
           hoveredAnchor: null,
           selectionBox: null,
         });
@@ -620,28 +734,30 @@ export function createCanvasInteractionController<TProject extends CanvasProject
             ? insertNodeIntoGroup(currentBoard.nodes, activeGroupId, node)
             : [...currentBoard.nodes, node],
         });
-        options.onCommitProject(nextProject);
+        commitProject(nextProject);
         selectNode(node.id);
         return;
       }
 
       if (options.getTool() === 'connector') {
         selectNode(null);
-        const anchor = findAnchorTarget(currentBoard.nodes, worldPoint, scaleTolerance(12, currentBoard.viewport.scale));
+        const targets = getConnectorTargets(currentBoard, worldPoint);
         updateState({
           hoveredNodeId: null,
-          hoveredAnchor: anchor ? { nodeId: anchor.nodeId, anchor: anchor.anchor } : null,
+          proximateConnectorNodeId: targets.proximateNodeId,
+          hoveredAnchor: targets.anchor ? { nodeId: targets.anchor.nodeId, anchor: targets.anchor.anchor } : null,
           selectionBox: null,
         });
-        if (!anchor) {
+        if (!targets.anchor) {
           return;
         }
 
         updateState({
           pointerMode: 'drawing-connector',
-          draftConnector: options.createConnectorNode(anchor, anchor.point, options.getConnectorPathMode()),
+          draftConnector: options.createConnectorNode(targets.anchor, targets.anchor.point, options.getConnectorPathMode()),
           hoveredNodeId: null,
-          hoveredAnchor: { nodeId: anchor.nodeId, anchor: anchor.anchor },
+          proximateConnectorNodeId: targets.proximateNodeId,
+          hoveredAnchor: { nodeId: targets.anchor.nodeId, anchor: targets.anchor.anchor },
           activeConnectorHandle: { kind: 'endpoint', endpoint: 'end' },
           selectionBox: null,
         });
@@ -703,8 +819,8 @@ export function createCanvasInteractionController<TProject extends CanvasProject
             scaleTolerance(6, currentBoard.viewport.scale),
             currentBoard,
           );
-          if (state.hoveredAnchor) {
-            updateState({ hoveredAnchor: null });
+          if (state.hoveredAnchor || state.proximateConnectorNodeId) {
+            updateState({ hoveredAnchor: null, proximateConnectorNodeId: null });
           }
           updateHoveredNode(hoveredId);
         } else {
@@ -713,13 +829,11 @@ export function createCanvasInteractionController<TProject extends CanvasProject
           }
 
           if (options.getTool() === 'connector') {
-            const hoveredAnchor = findAnchorTarget(
-              currentBoard.nodes,
-              worldPoint,
-              scaleTolerance(12, currentBoard.viewport.scale),
-            );
-            updateHoveredAnchor(hoveredAnchor?.nodeId ?? null, hoveredAnchor?.anchor ?? null);
-          } else if (state.hoveredAnchor) {
+            const targets = getConnectorTargets(currentBoard, worldPoint);
+            updateProximateConnectorNode(targets.proximateNodeId);
+            updateHoveredAnchor(targets.anchor?.nodeId ?? null, targets.anchor?.anchor ?? null);
+          } else if (state.hoveredAnchor || state.proximateConnectorNodeId) {
+            updateState({ proximateConnectorNodeId: null });
             updateHoveredAnchor(null, null);
           }
         }
@@ -763,9 +877,10 @@ export function createCanvasInteractionController<TProject extends CanvasProject
 
       if (state.pointerMode === 'drawing-connector' && state.draftConnector) {
         const startNodeId = state.draftConnector.start.kind === 'attached' ? state.draftConnector.start.nodeId : undefined;
-        const anchor = findAnchorTarget(currentBoard.nodes, worldPoint, scaleTolerance(12, currentBoard.viewport.scale), {
+        const targets = getConnectorTargets(currentBoard, worldPoint, {
           excludeNodeId: startNodeId,
         });
+        const anchor = targets.anchor;
         const draftConnector = withConnectorPreviewPath(
           {
             ...state.draftConnector,
@@ -785,6 +900,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
         );
         updateState({
           draftConnector,
+          proximateConnectorNodeId: targets.proximateNodeId,
           hoveredAnchor: anchor ? { nodeId: anchor.nodeId, anchor: anchor.anchor } : null,
         });
         renderCurrent();
@@ -798,10 +914,11 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       ) {
         const stationaryEndpoint =
           activeConnectorHandle.endpoint === 'start' ? state.draftConnector.end : state.draftConnector.start;
-        const anchor = findAnchorTarget(currentBoard.nodes, worldPoint, scaleTolerance(12, currentBoard.viewport.scale), {
+        const targets = getConnectorTargets(currentBoard, worldPoint, {
           excludeNodeId: stationaryEndpoint.kind === 'attached' ? stationaryEndpoint.nodeId : undefined,
           excludeConnectorId: state.draftConnector.id,
         });
+        const anchor = targets.anchor;
         const nextEndpoint = anchor
           ? ({
               kind: 'attached',
@@ -818,12 +935,16 @@ export function createCanvasInteractionController<TProject extends CanvasProject
           activeConnectorHandle.endpoint === 'start'
             ? { ...state.draftConnector, start: nextEndpoint }
             : { ...state.draftConnector, end: nextEndpoint };
-        if (getConnectorPathMode(draftConnector) === 'polyline' && getConnectorWaypointHandles(draftConnector).length === 0) {
+        if (
+          (getConnectorPathMode(draftConnector) === 'polyline' && getConnectorWaypointHandles(draftConnector).length === 0) ||
+          (getConnectorPathMode(draftConnector) === 'curve' && !draftConnector.curveControl)
+        ) {
           draftConnector = withConnectorPreviewPath(draftConnector, currentBoard);
         }
 
         updateState({
           draftConnector,
+          proximateConnectorNodeId: targets.proximateNodeId,
           hoveredAnchor: anchor ? { nodeId: anchor.nodeId, anchor: anchor.anchor } : null,
         });
         renderCurrent();
@@ -833,23 +954,36 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       if (
         state.pointerMode === 'editing-connector-waypoint' &&
         state.draftConnector &&
-        activeConnectorHandle?.kind === 'waypoint'
+        (activeConnectorHandle?.kind === 'waypoint' || activeConnectorHandle?.kind === 'curve-control')
       ) {
-        const waypoints = getConnectorWaypointHandles(state.draftConnector);
-        if (!waypoints[activeConnectorHandle.index]) {
-          return;
-        }
+        if (activeConnectorHandle.kind === 'curve-control') {
+          updateState({
+            draftConnector: {
+              ...state.draftConnector,
+              pathMode: 'curve',
+              curveControl: worldPoint,
+            },
+            proximateConnectorNodeId: null,
+            hoveredAnchor: null,
+          });
+        } else {
+          const waypoints = getConnectorWaypointHandles(state.draftConnector);
+          if (!waypoints[activeConnectorHandle.index]) {
+            return;
+          }
 
-        const nextWaypoints = waypoints.slice();
-        nextWaypoints[activeConnectorHandle.index] = worldPoint;
-        updateState({
-          draftConnector: {
-            ...state.draftConnector,
-            pathMode: 'polyline',
-            waypoints: nextWaypoints,
-          },
-          hoveredAnchor: null,
-        });
+          const nextWaypoints = waypoints.slice();
+          nextWaypoints[activeConnectorHandle.index] = worldPoint;
+          updateState({
+            draftConnector: {
+              ...state.draftConnector,
+              pathMode: 'polyline',
+              waypoints: nextWaypoints,
+            },
+            proximateConnectorNodeId: null,
+            hoveredAnchor: null,
+          });
+        }
         renderCurrent();
         return;
       }
@@ -861,12 +995,14 @@ export function createCanvasInteractionController<TProject extends CanvasProject
         if (!node) {
           return;
         }
+        const parentGroupId = getNodeParentGroupId(currentBoard.nodes, activeNodeId);
+        const localDelta = worldDeltaToGroupLocal(currentBoard, parentGroupId, { x: dx, y: dy });
         const activeGroupId = getActiveGroupId();
         const snapNodes = getNodesInContext(currentBoard, activeGroupId);
 
         const snapResult = computeDragSnap({
           node,
-          delta: { x: dx, y: dy },
+          delta: localDelta,
           nodes: snapNodes,
           viewport: currentBoard.viewport,
         });
@@ -877,6 +1013,30 @@ export function createCanvasInteractionController<TProject extends CanvasProject
           updateBoard({
             ...currentBoard,
             nodes: options.upsertNode(currentBoard.nodes, translateCanvasNode(node, snapResult.delta)),
+          }),
+        );
+        return;
+      }
+
+      if (state.pointerMode === 'rotating-node' && startWorld && activeNodeId && beforeMutation) {
+        const node = options.getNodeById(beforeMutation.board.nodes, activeNodeId);
+        if (!node || isConnectorNode(node)) {
+          return;
+        }
+
+        const resolved = getResolvedNodeRotationInfo(currentBoard, node);
+        if (!resolved) {
+          return;
+        }
+        const startAngle = Math.atan2(startWorld.y - resolved.center.y, startWorld.x - resolved.center.x);
+        const nextAngle = Math.atan2(worldPoint.y - resolved.center.y, worldPoint.x - resolved.center.x);
+        const worldRotation = resolved.rotation + (nextAngle - startAngle);
+        const localRotation = worldRotation - getParentGroupRotation(currentBoard, activeNodeId);
+
+        scheduleReplaceProject(
+          updateBoard({
+            ...currentBoard,
+            nodes: options.upsertNode(currentBoard.nodes, rotateCanvasNode(node, localRotation)),
           }),
         );
         return;
@@ -943,7 +1103,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
         }
       }
 
-      if ((state.pointerMode === 'dragging-node' || state.pointerMode === 'resizing-node') && beforeMutation) {
+      if ((state.pointerMode === 'dragging-node' || state.pointerMode === 'resizing-node' || state.pointerMode === 'rotating-node') && beforeMutation) {
         flushScheduledReplace();
         options.onFinalizeMutation(beforeMutation, currentProject);
       }
@@ -973,7 +1133,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
             ...currentBoard,
             nodes: [...currentBoard.nodes, state.draftConnector],
           });
-          options.onCommitProject(nextProject);
+          commitProject(nextProject);
           selectNode(state.draftConnector.id);
         }
       }
@@ -992,7 +1152,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
             ...currentBoard,
             nodes: options.upsertNode(currentBoard.nodes, state.draftConnector),
           });
-          options.onCommitProject(nextProject);
+          commitProject(nextProject);
           selectNode(state.draftConnector.id);
         } else {
           options.onReplaceProject(beforeMutation);
@@ -1000,12 +1160,17 @@ export function createCanvasInteractionController<TProject extends CanvasProject
         }
       }
 
-      if (state.pointerMode === 'editing-connector-waypoint' && state.draftConnector && activeNodeId) {
+      if (
+        state.pointerMode === 'editing-connector-waypoint' &&
+        state.draftConnector &&
+        activeNodeId &&
+        (activeConnectorHandle?.kind === 'waypoint' || activeConnectorHandle?.kind === 'curve-control')
+      ) {
         const nextProject = updateBoard({
           ...currentBoard,
           nodes: options.upsertNode(currentBoard.nodes, state.draftConnector),
         });
-        options.onCommitProject(nextProject);
+        commitProject(nextProject);
         selectNode(activeNodeId);
       }
 
@@ -1018,7 +1183,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
               ? insertNodeIntoGroup(currentBoard.nodes, activeGroupId, state.draftRect)
               : [...currentBoard.nodes, state.draftRect],
           });
-          options.onCommitProject(nextProject);
+          commitProject(nextProject);
           selectNode(state.draftRect.id);
         }
         updateState({ draftRect: null });
@@ -1033,7 +1198,7 @@ export function createCanvasInteractionController<TProject extends CanvasProject
               ? insertNodeIntoGroup(currentBoard.nodes, activeGroupId, state.draftFreehand)
               : [...currentBoard.nodes, state.draftFreehand],
           });
-          options.onCommitProject(nextProject);
+          commitProject(nextProject);
           selectNode(state.draftFreehand.id);
         }
         updateState({ draftFreehand: null });

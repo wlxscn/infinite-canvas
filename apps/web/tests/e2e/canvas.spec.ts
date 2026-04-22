@@ -250,6 +250,93 @@ function createSelectionChromeSeedProject() {
   return project;
 }
 
+function createRotationSeedProject() {
+  const project = createSeedProject();
+  project.board.nodes = [
+    {
+      id: 'group_rotation_seed',
+      type: 'group',
+      x: 60,
+      y: 60,
+      w: 220,
+      h: 170,
+      rotation: 0,
+      name: '成组',
+      children: [
+        {
+          id: 'node_rect_seed',
+          type: 'rect',
+          x: 24,
+          y: 24,
+          w: 140,
+          h: 100,
+          rotation: 0,
+          stroke: '#111827',
+          fill: 'rgba(59, 130, 246, 0.2)',
+        },
+      ],
+    },
+  ];
+  return project;
+}
+
+function createGroupedRotationSeedProject() {
+  const project = createSeedProject();
+  project.board.nodes = [
+    {
+      id: 'group_seed',
+      type: 'group',
+      x: 60,
+      y: 60,
+      w: 240,
+      h: 180,
+      rotation: 0,
+      name: '成组',
+      children: [
+        {
+          id: 'node_rect_child',
+          type: 'rect',
+          x: 24,
+          y: 24,
+          w: 120,
+          h: 90,
+          rotation: 0,
+          stroke: '#111827',
+          fill: 'rgba(59, 130, 246, 0.2)',
+        },
+      ],
+    },
+    {
+      id: 'node_rect_external',
+      type: 'rect',
+      x: 360,
+      y: 110,
+      w: 140,
+      h: 100,
+      rotation: 0,
+      stroke: '#111827',
+      fill: 'rgba(20, 184, 166, 0.18)',
+    },
+    {
+      id: 'connector_seed',
+      type: 'connector',
+      start: {
+        kind: 'attached',
+        nodeId: 'node_rect_child',
+        anchor: 'east',
+      },
+      end: {
+        kind: 'attached',
+        nodeId: 'node_rect_external',
+        anchor: 'west',
+      },
+      stroke: '#c44e1c',
+      width: 2,
+    },
+  ];
+  return project;
+}
+
 test('can persist seeded sidebar sessions and local asset interactions after reload', async ({ page }) => {
   const sessionItems = page.locator('.agent-session-item');
 
@@ -550,6 +637,99 @@ test('dragged nodes snap to nearby alignment targets', async ({ page }) => {
   await expect(page.locator('.canvas-ruler-range-y')).toBeVisible();
 });
 
+test('rotated nodes persist after reload and support undo redo', async ({ page }) => {
+  await page.addInitScript(([storageKey, project]) => {
+    if (window.sessionStorage.getItem('__seeded_project__') === 'true') {
+      return;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(project));
+    window.sessionStorage.setItem('__seeded_project__', 'true');
+  }, [STORAGE_KEY, createRotationSeedProject()]);
+
+  await page.goto('/');
+
+  const canvas = page.locator('canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+
+  if (!box) {
+    return;
+  }
+
+  await page.mouse.click(box.x + 72, box.y + 72);
+  await page.mouse.move(box.x + 170, box.y + 36);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 230, box.y + 145, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  await page.keyboard.press('Control+s');
+  await page.waitForTimeout(300);
+
+  let project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  let group = project.board.nodes.find((node: { id: string }) => node.id === 'group_rotation_seed');
+  expect(group.rotation).toBeGreaterThan(1);
+
+  await page.getByRole('button', { name: '撤销' }).click();
+  await page.waitForTimeout(250);
+  project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  group = project.board.nodes.find((node: { id: string }) => node.id === 'group_rotation_seed');
+  expect(Math.abs(group.rotation)).toBeLessThan(0.01);
+
+  await page.getByRole('button', { name: '重做' }).click();
+  await page.waitForTimeout(250);
+  project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  group = project.board.nodes.find((node: { id: string }) => node.id === 'group_rotation_seed');
+  expect(group.rotation).toBeGreaterThan(1);
+
+  await page.keyboard.press('Control+s');
+  await page.waitForTimeout(300);
+  await page.reload();
+  project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  group = project.board.nodes.find((node: { id: string }) => node.id === 'group_rotation_seed');
+  expect(group.rotation).toBeGreaterThan(1);
+});
+
+test('rotated groups can be dissolved while preserving child rotation and connector attachments', async ({ page }) => {
+  await page.addInitScript(([storageKey, project]) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(project));
+    window.sessionStorage.setItem('__seeded_project__', 'true');
+  }, [STORAGE_KEY, createGroupedRotationSeedProject()]);
+
+  await page.goto('/');
+
+  const canvas = page.locator('canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+
+  if (!box) {
+    return;
+  }
+
+  await page.mouse.click(box.x + 72, box.y + 72);
+  await page.mouse.move(box.x + 180, box.y + 36);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 240, box.y + 150, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+
+  let project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  const group = project.board.nodes.find((node: { id: string }) => node.id === 'group_seed');
+  expect(group.rotation).toBeGreaterThan(1);
+  const connectorBefore = project.board.nodes.find((node: { id: string }) => node.id === 'connector_seed');
+  expect(connectorBefore.start).toEqual({ kind: 'attached', nodeId: 'node_rect_child', anchor: 'east' });
+
+  await page.getByRole('button', { name: '拆分组' }).click();
+  await page.waitForTimeout(300);
+
+  project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  expect(project.board.nodes.some((node: { id: string }) => node.id === 'group_seed')).toBe(false);
+  const child = project.board.nodes.find((node: { id: string }) => node.id === 'node_rect_child');
+  expect(child).toBeTruthy();
+  expect(child.rotation).toBeGreaterThan(1);
+  const connectorAfter = project.board.nodes.find((node: { id: string }) => node.id === 'connector_seed');
+  expect(connectorAfter.start).toEqual({ kind: 'attached', nodeId: 'node_rect_child', anchor: 'east' });
+});
+
 test('connector tool creates anchored connectors, supports reattachment, and persists after reload', async ({ page }) => {
   await page.addInitScript(([storageKey, project]) => {
     if (window.sessionStorage.getItem('__seeded_project__') === 'true') {
@@ -612,6 +792,75 @@ test('connector tool creates anchored connectors, supports reattachment, and per
   expect(connector.end).toEqual({ kind: 'attached', nodeId: 'node_rect_c', anchor: 'west' });
 });
 
+test('connector anchors appear only for the proximate node and active group hides external targets', async ({ page }) => {
+  await page.addInitScript(([storageKey, project]) => {
+    if (window.sessionStorage.getItem('__seeded_project__') === 'true') {
+      return;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(project));
+    window.sessionStorage.setItem('__seeded_project__', 'true');
+  }, [STORAGE_KEY, createConnectorSeedProject()]);
+
+  await page.goto('/');
+
+  const canvas = page.locator('canvas');
+  const anchors = page.locator('.canvas-anchor');
+  const activeAnchors = page.locator('.canvas-anchor-active');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+
+  if (!box) {
+    return;
+  }
+
+  await page.getByRole('button', { name: '连线' }).click();
+  await expect(anchors).toHaveCount(0);
+
+  await page.mouse.move(box.x + 100, box.y + 90);
+  await expect(anchors).toHaveCount(4);
+  await expect(activeAnchors).toHaveCount(0);
+
+  await page.mouse.move(box.x + 180, box.y + 90);
+  await expect(anchors).toHaveCount(4);
+  await expect(activeAnchors).toHaveCount(1);
+
+  await page.mouse.move(box.x + 520, box.y + 360);
+  await expect(anchors).toHaveCount(0);
+
+  await page.addInitScript(([storageKey, project]) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(project));
+    window.sessionStorage.setItem('__seeded_project__', 'true');
+  }, [STORAGE_KEY, createGroupedRotationSeedProject()]);
+  await page.reload();
+
+  const groupedCanvas = page.locator('canvas');
+  const groupedBox = await groupedCanvas.boundingBox();
+  expect(groupedBox).not.toBeNull();
+
+  if (!groupedBox) {
+    return;
+  }
+
+  await page.getByRole('button', { name: '选择' }).click();
+  await page.mouse.click(groupedBox.x + 120, groupedBox.y + 120);
+  await page.getByRole('button', { name: '进入' }).click();
+  await page.waitForTimeout(250);
+
+  await page.getByRole('button', { name: '连线' }).click();
+  await page.mouse.move(groupedBox.x + 150, groupedBox.y + 129);
+  await expect(page.locator('.canvas-anchor')).toHaveCount(4);
+
+  await page.mouse.move(groupedBox.x + 204, groupedBox.y + 129);
+  await page.mouse.down();
+  await page.mouse.move(groupedBox.x + 360, groupedBox.y + 160, { steps: 10 });
+  await expect(page.locator('.canvas-anchor')).toHaveCount(0);
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+
+  const project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  expect(project.board.nodes.filter((node: { type: string }) => node.type === 'connector')).toHaveLength(1);
+});
+
 test('polyline connector mode exposes bend handles, supports reattachment, and restores after reload', async ({ page }) => {
   await page.addInitScript(([storageKey, project]) => {
     if (window.sessionStorage.getItem('__seeded_project__') === 'true') {
@@ -669,6 +918,66 @@ test('polyline connector mode exposes bend handles, supports reattachment, and r
   expect(connector.pathMode).toBe('polyline');
   expect(connector.waypoints[0]).toEqual({ x: 320, y: 90 });
   expect(connector.end).toEqual({ kind: 'attached', nodeId: 'node_rect_c', anchor: 'west' });
+});
+
+test('curve connector mode creates curved connectors, supports undo redo, and restores after reload', async ({ page }) => {
+  await page.addInitScript(([storageKey, project]) => {
+    if (window.sessionStorage.getItem('__seeded_project__') === 'true') {
+      return;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(project));
+    window.sessionStorage.setItem('__seeded_project__', 'true');
+  }, [STORAGE_KEY, createConnectorSeedProject()]);
+
+  await page.goto('/');
+
+  const canvas = page.locator('canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+
+  if (!box) {
+    return;
+  }
+
+  await page.getByRole('button', { name: '连线' }).click();
+  await page.getByRole('button', { name: '曲线' }).click();
+  await page.mouse.move(box.x + 180, box.y + 90);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 320, box.y + 110, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForFunction((storageKey) => {
+    const project = JSON.parse(localStorage.getItem(storageKey) ?? '{}');
+    return project.board?.nodes?.some((node: { type: string; pathMode?: string }) => node.type === 'connector' && node.pathMode === 'curve');
+  }, STORAGE_KEY);
+
+  let project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  let connector = project.board.nodes.find((node: { type: string }) => node.type === 'connector');
+  expect(connector).toBeTruthy();
+  expect(connector.pathMode).toBe('curve');
+  expect(connector.curveControl).toBeTruthy();
+
+  await page.getByRole('button', { name: '撤销' }).click();
+  await page.waitForFunction((storageKey) => {
+    const project = JSON.parse(localStorage.getItem(storageKey) ?? '{}');
+    return !project.board?.nodes?.some((node: { type: string }) => node.type === 'connector');
+  }, STORAGE_KEY);
+
+  await page.getByRole('button', { name: '重做' }).click();
+  await page.waitForFunction((storageKey) => {
+    const project = JSON.parse(localStorage.getItem(storageKey) ?? '{}');
+    return project.board?.nodes?.some((node: { type: string; pathMode?: string }) => node.type === 'connector' && node.pathMode === 'curve');
+  }, STORAGE_KEY);
+
+  project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  connector = project.board.nodes.find((node: { type: string }) => node.type === 'connector');
+  expect(connector.pathMode).toBe('curve');
+  expect(connector.curveControl).toBeTruthy();
+
+  await page.reload();
+  project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  connector = project.board.nodes.find((node: { type: string }) => node.type === 'connector');
+  expect(connector.pathMode).toBe('curve');
+  expect(connector.curveControl).toBeTruthy();
 });
 
 test('hover and selected chrome stay lightweight during hover and connector selection', async ({ page }) => {
@@ -997,13 +1306,17 @@ test('can create a canvas project, switch to another canvas, and switch back', a
   await page.locator('.project-switcher').evaluate((node) => {
     (node as HTMLDetailsElement).open = true;
   });
-  await page.getByRole('button', { name: '第二画布' }).click();
+  await page.locator('.project-switcher-item').filter({ hasText: '第二画布' }).first().evaluate((node) => {
+    (node as HTMLButtonElement).click();
+  });
   await expect(page.locator('.header-title strong')).toHaveText('第二画布');
 
   await page.locator('.project-switcher').evaluate((node) => {
     (node as HTMLDetailsElement).open = true;
   });
-  await page.locator('.project-switcher-item').filter({ hasText: '未命名画布' }).first().click();
+  await page.locator('.project-switcher-item').filter({ hasText: '未命名画布' }).first().evaluate((node) => {
+    (node as HTMLButtonElement).click();
+  });
   await expect(page.locator('.header-title strong')).toHaveText('未命名画布');
   await expect(page.getByText('新会话')).toBeVisible();
 });

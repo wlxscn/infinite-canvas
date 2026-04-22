@@ -1,5 +1,5 @@
-import { normalizeBounds, type Bounds } from './geometry';
-import type { BoardDoc, CanvasNode, GroupChildNode, GroupNode, Point } from './model';
+import { boundsFromPoints, getBoxCenter, getBoxRotation, getRotatedBoxBounds, rotatePoint, normalizeBounds, type Bounds } from './geometry';
+import type { BoardDoc, BoxNode, CanvasNode, GroupChildNode, GroupNode, Point } from './model';
 
 export interface NodeLocation<TNode extends CanvasNode = CanvasNode> {
   node: TNode;
@@ -9,6 +9,20 @@ export interface NodeLocation<TNode extends CanvasNode = CanvasNode> {
 
 export function isGroupNode(node: CanvasNode): node is GroupNode {
   return node.type === 'group';
+}
+
+function isBoxLikeNode(node: CanvasNode): node is BoxNode | GroupNode {
+  return (
+    node.type === 'rect' ||
+    node.type === 'text' ||
+    node.type === 'image' ||
+    node.type === 'video' ||
+    node.type === 'group'
+  );
+}
+
+function getGroupCenter(group: GroupNode): Point {
+  return getBoxCenter(group);
 }
 
 export function getNodeWorldOffset(board: BoardDoc, nodeId: string): Point {
@@ -94,21 +108,36 @@ export function getAllDescendantNodes(nodes: CanvasNode[]): CanvasNode[] {
   return result;
 }
 
-function translateChildNodeToWorld(node: GroupChildNode, offset: Point): GroupChildNode {
+function translateChildNodeToWorldWithGroupTransform(node: GroupChildNode, group: GroupNode): GroupChildNode {
+  const groupCenter = getGroupCenter(group);
+  const groupRotation = getBoxRotation(group);
+
   if (node.type === 'freehand') {
     return {
       ...node,
-      points: node.points.map((point) => ({
-        x: point.x + offset.x,
-        y: point.y + offset.y,
-      })),
+      points: node.points.map((point) =>
+        rotatePoint(
+          {
+            x: point.x + group.x,
+            y: point.y + group.y,
+          },
+          groupCenter,
+          groupRotation,
+        ),
+      ),
     };
   }
 
+  const localCenter = {
+    x: group.x + node.x + node.w / 2,
+    y: group.y + node.y + node.h / 2,
+  };
+  const worldCenter = rotatePoint(localCenter, groupCenter, groupRotation);
   return {
     ...node,
-    x: node.x + offset.x,
-    y: node.y + offset.y,
+    x: worldCenter.x - node.w / 2,
+    y: worldCenter.y - node.h / 2,
+    rotation: getBoxRotation(node) + groupRotation,
   };
 }
 
@@ -117,34 +146,51 @@ export function resolveNodeToWorld<TNode extends CanvasNode>(node: TNode, board?
     return node;
   }
 
-  const offset = getNodeWorldOffset(board, node.id);
-  if (offset.x === 0 && offset.y === 0) {
+  const parentGroupId = getNodeParentGroupId(board.nodes, node.id);
+  if (!parentGroupId) {
     return node;
   }
 
-  return translateChildNodeToWorld(node as GroupChildNode, offset) as TNode;
+  const parentGroup = getGroupById(board.nodes, parentGroupId);
+  if (!parentGroup) {
+    return node;
+  }
+
+  return translateChildNodeToWorldWithGroupTransform(node as GroupChildNode, parentGroup) as TNode;
 }
 
 export function getNodeWorldBounds(node: CanvasNode, board: BoardDoc): Bounds {
   const worldNode = resolveNodeToWorld(node, board);
   if (worldNode.type === 'freehand') {
-    return normalizeBounds({
-      x: Math.min(...worldNode.points.map((point) => point.x)),
-      y: Math.min(...worldNode.points.map((point) => point.y)),
-      w:
-        Math.max(...worldNode.points.map((point) => point.x)) -
-        Math.min(...worldNode.points.map((point) => point.x)),
-      h:
-        Math.max(...worldNode.points.map((point) => point.y)) -
-        Math.min(...worldNode.points.map((point) => point.y)),
-    });
+    return normalizeBounds(boundsFromPoints(worldNode.points));
   }
 
-  if (isGroupNode(worldNode) || worldNode.type === 'connector') {
-    return normalizeBounds(worldNode as Bounds);
+  if (worldNode.type === 'connector') {
+    return normalizeBounds(boundsFromPoints(resolveConnectorBoundsPoints(worldNode)));
+  }
+
+  if (isBoxLikeNode(worldNode)) {
+    return getRotatedBoxBounds(worldNode);
   }
 
   return normalizeBounds(worldNode);
+}
+
+function resolveConnectorBoundsPoints(node: Extract<CanvasNode, { type: 'connector' }>): Point[] {
+  const points: Point[] = [];
+  if (node.start.kind === 'free') {
+    points.push({ x: node.start.x, y: node.start.y });
+  }
+  if (node.end.kind === 'free') {
+    points.push({ x: node.end.x, y: node.end.y });
+  }
+  if (node.waypoints) {
+    points.push(...node.waypoints);
+  }
+  if (node.curveControl) {
+    points.push(node.curveControl);
+  }
+  return points.length > 0 ? points : [{ x: 0, y: 0 }];
 }
 
 export function worldPointToGroupLocal(board: BoardDoc, groupId: string | null, point: Point): Point {
@@ -157,15 +203,40 @@ export function worldPointToGroupLocal(board: BoardDoc, groupId: string | null, 
     return point;
   }
 
+  const unrotated = rotatePoint(point, getGroupCenter(group), -getBoxRotation(group));
   return {
-    x: point.x - group.x,
-    y: point.y - group.y,
+    x: unrotated.x - group.x,
+    y: unrotated.y - group.y,
   };
 }
 
 export function worldPointToNodeLocal(board: BoardDoc, nodeId: string, point: Point): Point {
+  const node = getNodeById(board.nodes, nodeId);
+  if (!node) {
+    return point;
+  }
+
   const parentGroupId = getNodeParentGroupId(board.nodes, nodeId);
-  return worldPointToGroupLocal(board, parentGroupId, point);
+  const groupLocalPoint = worldPointToGroupLocal(board, parentGroupId, point);
+
+  if (!isBoxLikeNode(node)) {
+    return groupLocalPoint;
+  }
+
+  return rotatePoint(groupLocalPoint, getBoxCenter(node), -getBoxRotation(node));
+}
+
+export function worldDeltaToGroupLocal(board: BoardDoc, groupId: string | null, delta: Point): Point {
+  if (!groupId) {
+    return delta;
+  }
+
+  const group = getGroupById(board.nodes, groupId);
+  if (!group) {
+    return delta;
+  }
+
+  return rotatePoint(delta, { x: 0, y: 0 }, -getBoxRotation(group));
 }
 
 export function upsertNode(nodes: CanvasNode[], node: CanvasNode): CanvasNode[] {
@@ -288,10 +359,26 @@ export function moveNodeToGroup(nodes: CanvasNode[], nodeId: string, groupId: st
     viewport: { tx: 0, ty: 0, scale: 1 },
     nodes,
   });
-  const localNode = translateChildNodeToWorld(worldNode as GroupChildNode, {
-    x: -targetGroup.x,
-    y: -targetGroup.y,
-  });
+  const targetGroupCenter = getGroupCenter(targetGroup);
+  const targetGroupRotation = getBoxRotation(targetGroup);
+  const localNode =
+    worldNode.type === 'freehand'
+      ? ({
+          ...worldNode,
+          points: worldNode.points.map((point) => {
+            const localPoint = rotatePoint(point, targetGroupCenter, -targetGroupRotation);
+            return {
+              x: localPoint.x - targetGroup.x,
+              y: localPoint.y - targetGroup.y,
+            };
+          }),
+        } as GroupChildNode)
+      : ({
+          ...worldNode,
+          x: rotatePoint(getBoxCenter(worldNode), targetGroupCenter, -targetGroupRotation).x - targetGroup.x - worldNode.w / 2,
+          y: rotatePoint(getBoxCenter(worldNode), targetGroupCenter, -targetGroupRotation).y - targetGroup.y - worldNode.h / 2,
+          rotation: getBoxRotation(worldNode) - targetGroupRotation,
+        } as GroupChildNode);
 
   const removedNodes = removeNodeById(nodes, nodeId);
   return removedNodes.map((node) =>
@@ -324,7 +411,7 @@ export function moveNodeOutOfGroup(nodes: CanvasNode[], nodeId: string): CanvasN
     return nodes;
   }
 
-  const worldNode = translateChildNodeToWorld(node, { x: parentGroup.x, y: parentGroup.y });
+  const worldNode = translateChildNodeToWorldWithGroupTransform(node, parentGroup);
   const removedNodes = removeNodeById(nodes, nodeId);
   const parentIndex = removedNodes.findIndex((candidate) => candidate.id === parentGroupId);
   const next = removedNodes.slice();
@@ -339,9 +426,7 @@ export function dissolveGroup(nodes: CanvasNode[], groupId: string): CanvasNode[
   }
 
   const group = nodes[groupIndex] as GroupNode;
-  const worldChildren = group.children.map((child) =>
-    translateChildNodeToWorld(child, { x: group.x, y: group.y }),
-  );
+  const worldChildren = group.children.map((child) => translateChildNodeToWorldWithGroupTransform(child, group));
   const next = nodes.slice();
   next.splice(groupIndex, 1, ...worldChildren);
   return next;

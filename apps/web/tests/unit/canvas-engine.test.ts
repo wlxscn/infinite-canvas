@@ -25,7 +25,7 @@ import type { CanvasNode } from '../../src/types/canvas';
 function createDraftConnector(
   anchor: { nodeId: string; anchor: 'north' | 'east' | 'south' | 'west'; point: { x: number; y: number } },
   point = anchor.point,
-  pathMode: 'straight' | 'polyline' = 'straight',
+  pathMode: 'straight' | 'polyline' | 'curve' = 'straight',
 ) {
   return {
     id: 'draft_connector',
@@ -42,6 +42,13 @@ function createDraftConnector(
     },
     pathMode,
     waypoints: pathMode === 'polyline' ? [{ x: point.x, y: anchor.point.y }] : [],
+    curveControl:
+      pathMode === 'curve'
+        ? {
+            x: (anchor.point.x + point.x) / 2,
+            y: Math.min(anchor.point.y, point.y) - 48,
+          }
+        : undefined,
     stroke: '#c44e1c',
     width: 2,
   };
@@ -271,11 +278,14 @@ describe('canvas engine', () => {
       beginPath: vi.fn(),
       moveTo: vi.fn(),
       lineTo: vi.fn(),
+      closePath: vi.fn(),
       stroke: vi.fn(),
       rect: vi.fn(),
       fill: vi.fn(),
       save: vi.fn(),
       restore: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
       setLineDash: vi.fn(),
       fillText: vi.fn(),
     } as unknown as CanvasRenderingContext2D;
@@ -357,6 +367,28 @@ describe('canvas engine', () => {
     expect(resizeCanvasNode(freehand, { x: 100, y: 100 })).toEqual(freehand);
   });
 
+  it('computes rotated bounds and hit testing for box nodes', () => {
+    const rect: CanvasNode = {
+      id: 'rect_rotated',
+      type: 'rect',
+      x: 100,
+      y: 100,
+      w: 120,
+      h: 80,
+      rotation: Math.PI / 2,
+      stroke: '#000',
+    };
+
+    expect(getCanvasNodeBounds(rect)).toEqual({
+      x: 120,
+      y: 80,
+      w: 80,
+      h: 120,
+    });
+    expect(hitTestCanvasNode(rect, { x: 160, y: 140 }, 2)).toBe(true);
+    expect(hitTestCanvasNode(rect, { x: 100, y: 100 }, 2)).toBe(false);
+  });
+
   it('derives connector geometry from attached endpoints and removes dependent connectors on delete', () => {
     const rectA: CanvasNode = {
       id: 'rect_a',
@@ -409,6 +441,60 @@ describe('canvas engine', () => {
     expect(removeNodeById(board.nodes, 'rect_a').map((node) => node.id)).toEqual(['rect_b']);
   });
 
+  it('recomputes connector anchors when an attached node rotates', () => {
+    const rectA: CanvasNode = {
+      id: 'rect_a',
+      type: 'rect',
+      x: 40,
+      y: 60,
+      w: 120,
+      h: 80,
+      rotation: Math.PI / 2,
+      stroke: '#000',
+    };
+    const rectB: CanvasNode = {
+      id: 'rect_b',
+      type: 'rect',
+      x: 280,
+      y: 90,
+      w: 140,
+      h: 100,
+      stroke: '#000',
+    };
+    const connector: CanvasNode = {
+      id: 'connector_1',
+      type: 'connector',
+      start: {
+        kind: 'attached',
+        nodeId: 'rect_a',
+        anchor: 'east',
+      },
+      end: {
+        kind: 'attached',
+        nodeId: 'rect_b',
+        anchor: 'west',
+      },
+      stroke: '#c44e1c',
+      width: 2,
+    };
+    const board = {
+      version: 2 as const,
+      viewport: { tx: 0, ty: 0, scale: 1 },
+      nodes: [rectA, rectB, connector],
+    };
+
+    expect(resolveConnectorPoints(connector, board)).toEqual({
+      start: { x: 100, y: 160 },
+      end: { x: 280, y: 140 },
+    });
+    expect(getCanvasNodeBounds(connector, board)).toEqual({
+      x: 100,
+      y: 140,
+      w: 180,
+      h: 20,
+    });
+  });
+
   it('resolves polyline connector paths and supports multi-segment hit testing', () => {
     const connector: CanvasNode = {
       id: 'connector_polyline',
@@ -448,6 +534,40 @@ describe('canvas engine', () => {
     expect(hitTestCanvasNode(connector, { x: 160, y: 40 }, 4, board)).toBe(true);
     expect(hitTestCanvasNode(connector, { x: 220, y: 120 }, 4, board)).toBe(true);
     expect(hitTestCanvasNode(connector, { x: 150, y: 120 }, 4, board)).toBe(false);
+  });
+
+  it('resolves curve connector paths and supports hit testing', () => {
+    const connector: CanvasNode = {
+      id: 'connector_curve',
+      type: 'connector',
+      start: {
+        kind: 'free',
+        x: 40,
+        y: 120,
+      },
+      end: {
+        kind: 'free',
+        x: 260,
+        y: 120,
+      },
+      pathMode: 'curve',
+      curveControl: { x: 150, y: 40 },
+      stroke: '#c44e1c',
+      width: 2,
+    };
+    const board = {
+      version: 2 as const,
+      viewport: { tx: 0, ty: 0, scale: 1 },
+      nodes: [connector],
+    };
+
+    const points = resolveConnectorPathPoints(connector, board);
+    expect(points).toBeTruthy();
+    expect(points?.[0]).toEqual({ x: 40, y: 120 });
+    expect(points?.at(-1)).toEqual({ x: 260, y: 120 });
+    expect(getCanvasNodeBounds(connector, board).h).toBeGreaterThan(0);
+    expect(hitTestCanvasNode(connector, { x: 150, y: 80 }, 8, board)).toBe(true);
+    expect(hitTestCanvasNode(connector, { x: 150, y: 170 }, 4, board)).toBe(false);
   });
 
   it('recreates runtime asset lookup data from project assets without mutating persisted project state', () => {
@@ -499,6 +619,8 @@ describe('canvas engine', () => {
       fill: vi.fn(),
       save: vi.fn(),
       restore: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
       fillText: vi.fn(),
       drawImage: vi.fn(),
     } as unknown as CanvasRenderingContext2D;
@@ -539,7 +661,7 @@ describe('canvas engine', () => {
     });
 
     expect(ctx.drawImage).toHaveBeenCalled();
-    expect(ctx.drawImage).toHaveBeenCalledWith(expect.any(MockImage), 0, 0, 320, 180, 100, 80, 160, 90);
+    expect(ctx.drawImage).toHaveBeenCalledWith(expect.any(MockImage), 0, 0, 320, 180, -80, -45, 160, 90);
     vi.stubGlobal('Image', OriginalImage);
   });
 
@@ -683,6 +805,114 @@ describe('canvas engine', () => {
     expect(onCommitProject).not.toHaveBeenCalled();
     expect(onFinalizeMutation).toHaveBeenCalledTimes(1);
     expect(onReplaceProject.mock.calls[0][0].board.nodes[0]).toMatchObject({ x: 50, y: 60 });
+
+    controller.dispose();
+  });
+
+  it('rotates a selected node through the rotate handle and finalizes once on pointer up', () => {
+    const base = createEmptyProject();
+    const project = {
+      ...base,
+      board: {
+        ...base.board,
+        nodes: [
+          {
+            id: 'node_rect_1',
+            type: 'rect' as const,
+            x: 10,
+            y: 20,
+            w: 120,
+            h: 90,
+            rotation: 0,
+            stroke: '#000',
+          },
+        ],
+      },
+    };
+
+    const onSelect = vi.fn();
+    const onReplaceProject = vi.fn();
+    const onCommitProject = vi.fn();
+    const onFinalizeMutation = vi.fn();
+
+    const controller = createCanvasInteractionController({
+      project,
+      selectedId: 'node_rect_1',
+      getActiveGroupId: () => null,
+      getTool: () => 'select',
+      isSpacePressed: () => false,
+      getConnectorPathMode: () => 'straight',
+      createRectNode: (point) => ({
+        id: 'draft_rect',
+        type: 'rect',
+        x: point.x,
+        y: point.y,
+        w: 0,
+        h: 0,
+        rotation: 0,
+        stroke: '#000',
+      }),
+      createFreehandNode: (point) => ({
+        id: 'draft_line',
+        type: 'freehand',
+        points: [point],
+        stroke: '#000',
+        width: 2,
+      }),
+      createTextNode: (point) => ({
+        id: 'draft_text',
+        type: 'text',
+        x: point.x,
+        y: point.y,
+        w: 100,
+        h: 50,
+        rotation: 0,
+        text: 'text',
+        color: '#000',
+        fontSize: 16,
+        fontFamily: 'sans-serif',
+      }),
+      createConnectorNode: createDraftConnector,
+      getNodeById,
+      upsertNode,
+      insertNodeIntoGroup: (nodes, _groupId, node) => [...nodes, node],
+      onSelect,
+      onReplaceProject,
+      onCommitProject,
+      onFinalizeMutation,
+      render: () => {},
+      requestAnimationFrame: (() => 1) as typeof window.requestAnimationFrame,
+      cancelAnimationFrame: (() => {}) as typeof window.cancelAnimationFrame,
+    });
+
+    controller.handlePointerDown({
+      screenPoint: { x: 70, y: -4 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+
+    controller.handlePointerMove({
+      screenPoint: { x: 115, y: 65 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+
+    controller.handlePointerUp({
+      screenPoint: { x: 115, y: 65 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+
+    expect(onReplaceProject).toHaveBeenCalledTimes(1);
+    expect(onFinalizeMutation).toHaveBeenCalledTimes(1);
+    expect(onCommitProject).not.toHaveBeenCalled();
+    expect((onReplaceProject.mock.calls[0][0].board.nodes[0] as Extract<CanvasNode, { type: 'rect' }>).rotation).toBeCloseTo(
+      Math.PI / 2,
+      5,
+    );
 
     controller.dispose();
   });
@@ -1517,6 +1747,245 @@ describe('canvas engine', () => {
     reattachController.dispose();
   });
 
+  it('reveals connector anchors on proximate nodes before anchor hit and clears them when leaving', () => {
+    const base = createEmptyProject();
+    const project = {
+      ...base,
+      board: {
+        ...base.board,
+        nodes: [
+          {
+            id: 'node_rect_a',
+            type: 'rect' as const,
+            x: 40,
+            y: 40,
+            w: 120,
+            h: 80,
+            stroke: '#000',
+          },
+          {
+            id: 'node_rect_b',
+            type: 'rect' as const,
+            x: 300,
+            y: 60,
+            w: 140,
+            h: 100,
+            stroke: '#000',
+          },
+        ],
+      },
+    };
+
+    const controller = createCanvasInteractionController({
+      project,
+      selectedId: null,
+      getActiveGroupId: () => null,
+      getTool: () => 'connector',
+      isSpacePressed: () => false,
+      getConnectorPathMode: () => 'straight',
+      createRectNode: (point) => ({
+        id: 'draft_rect',
+        type: 'rect',
+        x: point.x,
+        y: point.y,
+        w: 0,
+        h: 0,
+        stroke: '#000',
+      }),
+      createFreehandNode: (point) => ({
+        id: 'draft_line',
+        type: 'freehand',
+        points: [point],
+        stroke: '#000',
+        width: 2,
+      }),
+      createTextNode: (point) => ({
+        id: 'draft_text',
+        type: 'text',
+        x: point.x,
+        y: point.y,
+        w: 100,
+        h: 50,
+        text: 'text',
+        color: '#000',
+        fontSize: 16,
+        fontFamily: 'sans-serif',
+      }),
+      createConnectorNode: createDraftConnector,
+      getNodeById,
+      upsertNode,
+      insertNodeIntoGroup: (nodes, _groupId, node) => [...nodes, node],
+      onSelect: vi.fn(),
+      onReplaceProject: vi.fn(),
+      onCommitProject: vi.fn(),
+      onFinalizeMutation: vi.fn(),
+      render: () => {},
+      requestAnimationFrame: (() => 1) as typeof window.requestAnimationFrame,
+      cancelAnimationFrame: (() => {}) as typeof window.cancelAnimationFrame,
+    });
+
+    controller.handlePointerMove({
+      screenPoint: { x: 100, y: 80 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    expect(controller.getState().proximateConnectorNodeId).toBe('node_rect_a');
+    expect(controller.getState().hoveredAnchor).toBeNull();
+
+    controller.handlePointerMove({
+      screenPoint: { x: 160, y: 80 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    expect(controller.getState().proximateConnectorNodeId).toBe('node_rect_a');
+    expect(controller.getState().hoveredAnchor).toEqual({ nodeId: 'node_rect_a', anchor: 'east' });
+
+    controller.handlePointerMove({
+      screenPoint: { x: 520, y: 360 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    expect(controller.getState().proximateConnectorNodeId).toBeNull();
+    expect(controller.getState().hoveredAnchor).toBeNull();
+
+    controller.dispose();
+  });
+
+  it('limits connector proximity and attachment targets to the active group context', () => {
+    const base = createEmptyProject();
+    const project = {
+      ...base,
+      board: {
+        ...base.board,
+        nodes: [
+          {
+            id: 'group_seed',
+            type: 'group' as const,
+            x: 60,
+            y: 60,
+            w: 240,
+            h: 180,
+            children: [
+              {
+                id: 'node_rect_child',
+                type: 'rect' as const,
+                x: 24,
+                y: 24,
+                w: 120,
+                h: 90,
+                stroke: '#000',
+              },
+            ],
+          },
+          {
+            id: 'node_rect_external',
+            type: 'rect' as const,
+            x: 360,
+            y: 110,
+            w: 140,
+            h: 100,
+            stroke: '#000',
+          },
+        ],
+      },
+    };
+
+    const onCommitProject = vi.fn();
+    const controller = createCanvasInteractionController({
+      project,
+      selectedId: null,
+      getActiveGroupId: () => 'group_seed',
+      getTool: () => 'connector',
+      isSpacePressed: () => false,
+      getConnectorPathMode: () => 'straight',
+      createRectNode: (point) => ({
+        id: 'draft_rect',
+        type: 'rect',
+        x: point.x,
+        y: point.y,
+        w: 0,
+        h: 0,
+        stroke: '#000',
+      }),
+      createFreehandNode: (point) => ({
+        id: 'draft_line',
+        type: 'freehand',
+        points: [point],
+        stroke: '#000',
+        width: 2,
+      }),
+      createTextNode: (point) => ({
+        id: 'draft_text',
+        type: 'text',
+        x: point.x,
+        y: point.y,
+        w: 100,
+        h: 50,
+        text: 'text',
+        color: '#000',
+        fontSize: 16,
+        fontFamily: 'sans-serif',
+      }),
+      createConnectorNode: createDraftConnector,
+      getNodeById,
+      upsertNode,
+      insertNodeIntoGroup: (nodes, _groupId, node) => [...nodes, node],
+      onSelect: vi.fn(),
+      onReplaceProject: vi.fn(),
+      onCommitProject,
+      onFinalizeMutation: vi.fn(),
+      render: () => {},
+      requestAnimationFrame: (() => 1) as typeof window.requestAnimationFrame,
+      cancelAnimationFrame: (() => {}) as typeof window.cancelAnimationFrame,
+    });
+
+    controller.handlePointerMove({
+      screenPoint: { x: 390, y: 160 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    expect(controller.getState().proximateConnectorNodeId).toBeNull();
+    expect(controller.getState().hoveredAnchor).toBeNull();
+
+    controller.handlePointerMove({
+      screenPoint: { x: 150, y: 129 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    expect(controller.getState().proximateConnectorNodeId).toBe('node_rect_child');
+    expect(controller.getState().hoveredAnchor).toBeNull();
+
+    controller.handlePointerDown({
+      screenPoint: { x: 204, y: 129 },
+      pointerId: 2,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    controller.handlePointerMove({
+      screenPoint: { x: 360, y: 160 },
+      pointerId: 2,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    expect(controller.getState().proximateConnectorNodeId).toBeNull();
+    expect(controller.getState().hoveredAnchor).toBeNull();
+
+    controller.handlePointerUp({
+      screenPoint: { x: 360, y: 160 },
+      pointerId: 2,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    expect(onCommitProject).not.toHaveBeenCalled();
+
+    controller.dispose();
+  });
+
   it('creates polyline connectors and updates waypoint handles through the controller', () => {
     const base = createEmptyProject();
     const project = {
@@ -1693,5 +2162,148 @@ describe('canvas engine', () => {
     controller.dispose();
     waypointController.dispose();
     reattachController.dispose();
+  });
+
+  it('creates curve connectors and updates the curve control handle through the controller', () => {
+    const base = createEmptyProject();
+    const project = {
+      ...base,
+      board: {
+        ...base.board,
+        nodes: [
+          {
+            id: 'node_rect_a',
+            type: 'rect' as const,
+            x: 40,
+            y: 40,
+            w: 120,
+            h: 80,
+            stroke: '#000',
+          },
+          {
+            id: 'node_rect_b',
+            type: 'rect' as const,
+            x: 300,
+            y: 60,
+            w: 140,
+            h: 100,
+            stroke: '#000',
+          },
+        ],
+      },
+    };
+
+    const onSelect = vi.fn();
+    const onReplaceProject = vi.fn();
+    const onCommitProject = vi.fn();
+    const onFinalizeMutation = vi.fn();
+
+    const createController = (nextProject: typeof project, selectedId: string | null, tool: 'select' | 'connector') =>
+      createCanvasInteractionController({
+        project: nextProject,
+        selectedId,
+        getActiveGroupId: () => null,
+        getTool: () => tool,
+        isSpacePressed: () => false,
+        getConnectorPathMode: () => 'curve',
+        createRectNode: (point) => ({
+          id: 'draft_rect',
+          type: 'rect',
+          x: point.x,
+          y: point.y,
+          w: 0,
+          h: 0,
+          stroke: '#000',
+        }),
+        createFreehandNode: (point) => ({
+          id: 'draft_line',
+          type: 'freehand',
+          points: [point],
+          stroke: '#000',
+          width: 2,
+        }),
+        createTextNode: (point) => ({
+          id: 'draft_text',
+          type: 'text',
+          x: point.x,
+          y: point.y,
+          w: 100,
+          h: 50,
+          text: 'text',
+          color: '#000',
+          fontSize: 16,
+          fontFamily: 'sans-serif',
+        }),
+        createConnectorNode: createDraftConnector,
+        getNodeById,
+        upsertNode,
+        insertNodeIntoGroup: (nodes, _groupId, node) => [...nodes, node],
+        onSelect,
+        onReplaceProject,
+        onCommitProject,
+        onFinalizeMutation,
+        render: () => {},
+        requestAnimationFrame: (() => 1) as typeof window.requestAnimationFrame,
+        cancelAnimationFrame: (() => {}) as typeof window.cancelAnimationFrame,
+      });
+
+    const controller = createController(project, null, 'connector');
+    controller.handlePointerDown({
+      screenPoint: { x: 160, y: 80 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    controller.handlePointerMove({
+      screenPoint: { x: 300, y: 110 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    controller.handlePointerUp({
+      screenPoint: { x: 300, y: 110 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+
+    const createdProject = onCommitProject.mock.calls[0][0];
+    const curvedConnector = createdProject.board.nodes.find((node: CanvasNode) => node.id === 'draft_connector');
+    expect(curvedConnector).toMatchObject({
+      pathMode: 'curve',
+      start: { kind: 'attached', nodeId: 'node_rect_a', anchor: 'east' },
+      end: { kind: 'attached', nodeId: 'node_rect_b', anchor: 'west' },
+    });
+    expect(curvedConnector.curveControl).toBeTruthy();
+
+    const editController = createController(createdProject, 'draft_connector', 'select');
+    const control = curvedConnector.curveControl as { x: number; y: number };
+
+    editController.handlePointerDown({
+      screenPoint: control,
+      pointerId: 2,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    editController.handlePointerMove({
+      screenPoint: { x: control.x, y: control.y - 40 },
+      pointerId: 2,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    editController.handlePointerUp({
+      screenPoint: { x: control.x, y: control.y - 40 },
+      pointerId: 2,
+      pointerType: 'mouse',
+      button: 0,
+    });
+
+    const editedProject = onCommitProject.mock.calls[1][0];
+    const editedConnector = editedProject.board.nodes.find((node: CanvasNode) => node.id === 'draft_connector');
+    expect(editedConnector.pathMode).toBe('curve');
+    expect(editedConnector.curveControl).toEqual({ x: control.x, y: control.y - 40 });
+
+    controller.dispose();
+    editController.dispose();
   });
 });

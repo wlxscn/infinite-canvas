@@ -1,7 +1,8 @@
 import {
   createCanvasInteractionController,
   createInitialInteractionState,
-  getAllDescendantNodes,
+  getConnectorCurveControlHandle,
+  getDefaultConnectorCurveControl,
   getConnectorWaypointHandles,
   getDefaultConnectorWaypoints,
   getNodeAnchors,
@@ -20,6 +21,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -142,6 +144,7 @@ function CanvasAnchorOverlay({
   board,
   tool,
   pointerMode,
+  proximateConnectorNodeId,
   selectedNode,
   draftConnector,
   hoveredAnchor,
@@ -150,6 +153,7 @@ function CanvasAnchorOverlay({
   board: CanvasProject['board'];
   tool: Tool;
   pointerMode: CanvasInteractionState['pointerMode'];
+  proximateConnectorNodeId: string | null;
   selectedNode: CanvasNode | null;
   draftConnector: CanvasInteractionState['draftConnector'];
   hoveredAnchor: { nodeId: string; anchor: string } | null;
@@ -165,20 +169,23 @@ function CanvasAnchorOverlay({
         ? selectedNode
         : null;
   const anchors = useMemo(() => {
-    if (!shouldShowAnchors) {
+    if (!shouldShowAnchors || !proximateConnectorNodeId) {
       return [];
     }
 
-    return getAllDescendantNodes(board.nodes).flatMap((node) =>
-      getNodeAnchors(node, board).map((anchor) => ({
-        ...anchor,
-        screenPoint: worldToScreen(anchor.point, board.viewport),
-      })),
-    );
-  }, [board, shouldShowAnchors]);
+    const node = getNodeById(board.nodes, proximateConnectorNodeId);
+    if (!node) {
+      return [];
+    }
+
+    return getNodeAnchors(node, board).map((anchor) => ({
+      ...anchor,
+      screenPoint: worldToScreen(anchor.point, board.viewport),
+    }));
+  }, [board, proximateConnectorNodeId, shouldShowAnchors]);
 
   const connectorHandles = useMemo(() => {
-    if (!editingConnector || !isConnectorEditing) {
+    if (!editingConnector) {
       return null;
     }
 
@@ -188,9 +195,16 @@ function CanvasAnchorOverlay({
     }
 
     return {
+      showEndpoints: isConnectorEditing,
       start: worldToScreen(points.start, board.viewport),
       end: worldToScreen(points.end, board.viewport),
-      waypoints: getConnectorWaypointHandles(editingConnector).map((point) => worldToScreen(point, board.viewport)),
+      waypoints: isConnectorEditing
+        ? getConnectorWaypointHandles(editingConnector).map((point) => worldToScreen(point, board.viewport))
+        : [],
+      curveControl: (() => {
+        const control = getConnectorCurveControlHandle(editingConnector, board);
+        return control ? worldToScreen(control, board.viewport) : null;
+      })(),
     };
   }, [board, editingConnector, isConnectorEditing]);
 
@@ -217,14 +231,16 @@ function CanvasAnchorOverlay({
 
       {connectorHandles ? (
         <>
-          <div
-            className={
-              activeConnectorHandle?.kind === 'endpoint' && activeConnectorHandle.endpoint === 'start'
-                ? 'canvas-connector-handle canvas-connector-handle-active'
-                : 'canvas-connector-handle'
-            }
-            style={{ left: connectorHandles.start.x, top: connectorHandles.start.y }}
-          />
+          {connectorHandles.showEndpoints ? (
+            <div
+              className={
+                activeConnectorHandle?.kind === 'endpoint' && activeConnectorHandle.endpoint === 'start'
+                  ? 'canvas-connector-handle canvas-connector-handle-active'
+                  : 'canvas-connector-handle'
+              }
+              style={{ left: connectorHandles.start.x, top: connectorHandles.start.y }}
+            />
+          ) : null}
           {connectorHandles.waypoints.map((point, index) => (
             <div
               key={`waypoint-${index}`}
@@ -236,14 +252,26 @@ function CanvasAnchorOverlay({
               style={{ left: point.x, top: point.y }}
             />
           ))}
-          <div
-            className={
-              activeConnectorHandle?.kind === 'endpoint' && activeConnectorHandle.endpoint === 'end'
-                ? 'canvas-connector-handle canvas-connector-handle-active'
-                : 'canvas-connector-handle'
-            }
-            style={{ left: connectorHandles.end.x, top: connectorHandles.end.y }}
-          />
+          {connectorHandles.curveControl ? (
+            <div
+              className={
+                activeConnectorHandle?.kind === 'curve-control'
+                  ? 'canvas-connector-handle canvas-connector-handle-curve canvas-connector-handle-active'
+                  : 'canvas-connector-handle canvas-connector-handle-curve'
+              }
+              style={{ left: connectorHandles.curveControl.x, top: connectorHandles.curveControl.y }}
+            />
+          ) : null}
+          {connectorHandles.showEndpoints ? (
+            <div
+              className={
+                activeConnectorHandle?.kind === 'endpoint' && activeConnectorHandle.endpoint === 'end'
+                  ? 'canvas-connector-handle canvas-connector-handle-active'
+                  : 'canvas-connector-handle'
+              }
+              style={{ left: connectorHandles.end.x, top: connectorHandles.end.y }}
+            />
+          ) : null}
         </>
       ) : null}
     </div>
@@ -303,15 +331,15 @@ export function CanvasStage({
     [activeGroupId],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     toolRef.current = tool;
   }, [tool]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     isSpacePressedRef.current = isSpacePressed;
   }, [isSpacePressed]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     onSelectRef.current = onSelect;
     onReplaceProjectRef.current = onReplaceProject;
     onCommitProjectRef.current = onCommitProject;
@@ -337,6 +365,7 @@ export function CanvasStage({
         y: point.y,
         w: 0,
         h: 0,
+        rotation: 0,
         stroke: '#0f172a',
         fill: 'rgba(59, 130, 246, 0.2)',
       }),
@@ -354,6 +383,7 @@ export function CanvasStage({
         y: point.y,
         w: 220,
         h: 72,
+        rotation: 0,
         text: '新建文本',
         color: '#0f172a',
         fontSize: 20,
@@ -374,6 +404,10 @@ export function CanvasStage({
         },
         pathMode,
         waypoints: pathMode === 'polyline' ? getDefaultConnectorWaypoints(anchor.point, point, anchor.anchor) : [],
+        curveControl:
+          pathMode === 'curve'
+            ? getDefaultConnectorCurveControl(anchor.point, point, anchor.anchor)
+            : undefined,
         stroke: '#c44e1c',
         width: 2,
       }),
@@ -531,6 +565,7 @@ export function CanvasStage({
           board={project.board}
           tool={tool}
           pointerMode={interactionState.pointerMode}
+          proximateConnectorNodeId={interactionState.proximateConnectorNodeId}
           selectedNode={selectedNode}
           draftConnector={interactionState.draftConnector}
           hoveredAnchor={interactionState.hoveredAnchor}

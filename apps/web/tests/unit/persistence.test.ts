@@ -157,6 +157,147 @@ describe('project persistence', () => {
     expect(project.chat.activeSessionId).toBeNull();
   });
 
+  it('normalizes stored v2 nodes that predate rotation fields', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 2,
+        board: {
+          version: 2,
+          viewport: { tx: 0, ty: 0, scale: 1 },
+          nodes: [
+            {
+              id: 'rect_1',
+              type: 'rect',
+              x: 10,
+              y: 20,
+              w: 100,
+              h: 80,
+              stroke: '#000',
+            },
+            {
+              id: 'group_1',
+              type: 'group',
+              x: 100,
+              y: 120,
+              w: 240,
+              h: 180,
+              children: [
+                {
+                  id: 'text_1',
+                  type: 'text',
+                  x: 24,
+                  y: 24,
+                  w: 120,
+                  h: 60,
+                  text: 'legacy',
+                  color: '#111',
+                  fontSize: 16,
+                  fontFamily: 'sans-serif',
+                },
+              ],
+            },
+          ],
+        },
+        assets: [],
+        jobs: [],
+      }),
+    );
+
+    const project = loadProject();
+    expect((project.board.nodes[0] as Extract<(typeof project.board.nodes)[number], { type: 'rect' }>).rotation).toBe(0);
+    expect((project.board.nodes[1] as Extract<(typeof project.board.nodes)[number], { type: 'group' }>).rotation).toBe(0);
+    const child = (project.board.nodes[1] as Extract<(typeof project.board.nodes)[number], { type: 'group' }>).children[0];
+    expect((child as Extract<typeof child, { type: 'text' }>).rotation).toBe(0);
+  });
+
+  it('preserves curved connector fields across save and load', () => {
+    const project = createEmptyProject();
+    project.board.nodes = [
+      {
+        id: 'node_rect_a',
+        type: 'rect',
+        x: 40,
+        y: 40,
+        w: 120,
+        h: 80,
+        rotation: 0,
+        stroke: '#000',
+      },
+      {
+        id: 'node_rect_b',
+        type: 'rect',
+        x: 300,
+        y: 60,
+        w: 140,
+        h: 100,
+        rotation: 0,
+        stroke: '#000',
+      },
+      {
+        id: 'connector_curve_1',
+        type: 'connector',
+        start: {
+          kind: 'attached',
+          nodeId: 'node_rect_a',
+          anchor: 'east',
+        },
+        end: {
+          kind: 'attached',
+          nodeId: 'node_rect_b',
+          anchor: 'west',
+        },
+        pathMode: 'curve',
+        curveControl: { x: 210, y: 24 },
+        stroke: '#c44e1c',
+        width: 2,
+      },
+    ];
+
+    saveProject(project);
+
+    const loaded = loadProject();
+    const connector = loaded.board.nodes.find((node) => node.id === 'connector_curve_1');
+    expect(connector).toMatchObject({
+      type: 'connector',
+      pathMode: 'curve',
+      curveControl: { x: 210, y: 24 },
+    });
+  });
+
+  it('keeps legacy curved connector data readable when pathMode is omitted', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 2,
+        board: {
+          version: 2,
+          viewport: { tx: 0, ty: 0, scale: 1 },
+          nodes: [
+            {
+              id: 'connector_curve_legacy',
+              type: 'connector',
+              start: { kind: 'free', x: 40, y: 120 },
+              end: { kind: 'free', x: 260, y: 120 },
+              curveControl: { x: 150, y: 36 },
+              stroke: '#c44e1c',
+              width: 2,
+            },
+          ],
+        },
+        assets: [],
+        jobs: [],
+      }),
+    );
+
+    const project = loadProject();
+    const connector = project.board.nodes.find((node) => node.id === 'connector_curve_legacy');
+    expect(connector).toMatchObject({
+      type: 'connector',
+      curveControl: { x: 150, y: 36 },
+    });
+  });
+
   it('preserves service-backed session metadata when present', () => {
     const project = createEmptyProject();
     project.chat.activeSessionId = 'session_1';
@@ -374,6 +515,25 @@ describe('project persistence', () => {
     expect(summaries).toHaveLength(1);
     expect(summaries[0].title).toBe('封面草图');
     expect(localStorage.getItem(RECENT_PROJECTS_STORAGE_KEY)).toContain(projectId);
+  });
+
+  it('sorts recent canvas summaries by creation time descending', () => {
+    upsertRecentProjectSummary(
+      createProjectSummary('11111111-1111-4111-8111-111111111111', {
+        title: '较早创建',
+        createdAt: '2026-04-20T00:00:00.000Z',
+      }),
+    );
+    upsertRecentProjectSummary(
+      createProjectSummary('22222222-2222-4222-8222-222222222222', {
+        title: '较晚创建',
+        createdAt: '2026-04-22T00:00:00.000Z',
+      }),
+    );
+
+    const summaries = loadRecentProjectSummaries();
+
+    expect(summaries.map((summary) => summary.title)).toEqual(['较晚创建', '较早创建']);
   });
 
   it('loads remote projects from the project endpoint beside chat', async () => {

@@ -10,6 +10,7 @@ export type PointerMode =
   | 'editing-connector-end'
   | 'editing-connector-waypoint'
   | 'resizing-node'
+  | 'rotating-node'
   | 'marquee-selecting'
   | 'pinch';
 
@@ -26,7 +27,8 @@ export interface HoveredAnchor {
 
 export type ConnectorHandle =
   | { kind: 'endpoint'; endpoint: 'start' | 'end' }
-  | { kind: 'waypoint'; index: number };
+  | { kind: 'waypoint'; index: number }
+  | { kind: 'curve-control' };
 
 export interface SnapGuide {
   axis: 'x' | 'y';
@@ -46,6 +48,7 @@ export interface CanvasInteractionState extends DraftState {
   isWheelInteractionActive: boolean;
   snapGuides: SnapGuide[];
   hoveredNodeId: string | null;
+  proximateConnectorNodeId: string | null;
   hoveredAnchor: HoveredAnchor | null;
   activeConnectorHandle: ConnectorHandle | null;
   selectionBox: SelectionBox | null;
@@ -60,6 +63,7 @@ export function createInitialInteractionState(): CanvasInteractionState {
     draftConnector: null,
     snapGuides: [],
     hoveredNodeId: null,
+    proximateConnectorNodeId: null,
     hoveredAnchor: null,
     activeConnectorHandle: null,
     selectionBox: null,
@@ -74,6 +78,7 @@ export function isActiveInteractionMode(mode: PointerMode): boolean {
       mode === 'editing-connector-end' ||
       mode === 'editing-connector-waypoint' ||
       mode === 'resizing-node' ||
+      mode === 'rotating-node' ||
       mode === 'marquee-selecting' ||
       mode === 'pinch'
   );
@@ -93,6 +98,9 @@ export function getCanvasCursor(
   }
   if (state.pointerMode === 'resizing-node') {
     return 'nwse-resize';
+  }
+  if (state.pointerMode === 'rotating-node') {
+    return 'grabbing';
   }
   if (tool === 'pan' || isSpacePressed) {
     return 'grab';

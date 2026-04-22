@@ -285,12 +285,13 @@ body {
   border: 1px solid rgba(196, 78, 28, 0.55);
   background: rgba(255, 251, 247, 0.92);
   box-shadow: 0 0 0 2px rgba(255, 250, 242, 0.55);
-  opacity: 0.9;
+  opacity: 0.78;
 }
 
 .canvas-anchor-active {
   background: rgba(196, 78, 28, 0.94);
   border-color: rgba(255, 247, 237, 0.92);
+  opacity: 1;
   transform: translate(-50%, -50%) scale(1.08);
   box-shadow: 0 0 0 3px rgba(255, 237, 213, 0.55);
 }
@@ -305,6 +306,14 @@ body {
   border-radius: 4px;
   width: 11px;
   height: 11px;
+}
+
+.canvas-connector-handle-curve {
+  width: 13px;
+  height: 13px;
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(196, 78, 28, 0.85);
+  box-shadow: 0 0 0 2px rgba(255, 237, 213, 0.7);
 }
 
 .canvas-connector-handle-active {
@@ -558,20 +567,12 @@ body {
   position: relative;
 }
 
-.project-switcher summary {
-  list-style: none;
-}
-
-.project-switcher summary::-webkit-details-marker {
-  display: none;
-}
-
 .project-switcher-menu {
   position: absolute;
   top: calc(100% + 10px);
   left: 0;
   min-width: 240px;
-  display: grid;
+  display: none;
   gap: 8px;
   padding: 12px;
   border-radius: 18px;
@@ -579,6 +580,10 @@ body {
   border: 1px solid rgba(24, 24, 27, 0.08);
   box-shadow: 0 16px 34px rgba(41, 37, 36, 0.12);
   z-index: 6;
+}
+
+.project-switcher-menu-open {
+  display: grid;
 }
 
 .project-switcher-item {
@@ -636,6 +641,12 @@ body {
 .dock-btn:hover,
 .chat-suggestion-btn:hover {
   background: #fff;
+}
+
+.ghost-btn-active {
+  background: #fff;
+  border-color: rgba(196, 142, 34, 0.34);
+  box-shadow: 0 8px 18px rgba(41, 37, 36, 0.08);
 }
 
 .ghost-btn:disabled {
