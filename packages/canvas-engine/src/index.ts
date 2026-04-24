@@ -29,6 +29,7 @@ export {
   getDefaultConnectorCurveControl,
   getDefaultConnectorCurveControls,
   getConnectorCurveControlHandle,
+  getConnectorCurveBendHandle,
   resolveConnectorCurveBezierControls,
   getAnchorPoint,
   getNodeAnchors,

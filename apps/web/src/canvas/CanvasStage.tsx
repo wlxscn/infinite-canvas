@@ -1,10 +1,9 @@
 import {
   createCanvasInteractionController,
   createInitialInteractionState,
+  getConnectorCurveBendHandle,
   getConnectorCurveControlHandle,
-  getDefaultConnectorCurveControls,
   getConnectorWaypointHandles,
-  getDefaultConnectorWaypoints,
   getNodeAnchors,
   getCanvasCursor,
   isInteractionActive,
@@ -224,6 +223,10 @@ function CanvasAnchorOverlay({
           return control ? worldToScreen(control, board.viewport) : null;
         })(),
       },
+      curveBend: (() => {
+        const handle = getConnectorCurveBendHandle(editingConnector, board);
+        return handle ? worldToScreen(handle, board.viewport) : null;
+      })(),
     };
   }, [board, editingConnector, isConnectorEditing]);
 
@@ -302,6 +305,16 @@ function CanvasAnchorOverlay({
                 style={{ left: connectorHandles.curveControls.end.x, top: connectorHandles.curveControls.end.y }}
               />
             </>
+          ) : null}
+          {connectorHandles.curveBend ? (
+            <div
+              className={
+                activeConnectorHandle?.kind === 'curve-bend'
+                  ? 'canvas-connector-handle canvas-connector-handle-bend canvas-connector-handle-active'
+                  : 'canvas-connector-handle canvas-connector-handle-bend'
+              }
+              style={{ left: connectorHandles.curveBend.x, top: connectorHandles.curveBend.y }}
+            />
           ) : null}
           {connectorHandles.showEndpoints ? (
             <div
@@ -436,11 +449,6 @@ export function CanvasStage({
         fontFamily: 'Space Grotesk, Avenir Next, Segoe UI, sans-serif',
       }),
       createConnectorNode: (anchor, point, pathMode) => {
-        const curveControls =
-          pathMode === 'curve'
-            ? getDefaultConnectorCurveControls(anchor.point, point, anchor.anchor)
-            : null;
-
         return {
           id: createId('node'),
           type: 'connector',
@@ -455,10 +463,10 @@ export function CanvasStage({
             y: point.y,
           },
           pathMode,
-          waypoints: pathMode === 'polyline' ? getDefaultConnectorWaypoints(anchor.point, point, anchor.anchor) : [],
+          waypoints: [],
           curveControl: undefined,
-          curveStartControl: curveControls?.startControl,
-          curveEndControl: curveControls?.endControl,
+          curveStartControl: undefined,
+          curveEndControl: undefined,
           stroke: '#c44e1c',
           width: 2,
         };

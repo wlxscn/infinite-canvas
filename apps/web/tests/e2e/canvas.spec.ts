@@ -200,6 +200,21 @@ function createConnectorSeedProject() {
   return project;
 }
 
+function createPolylineObstacleSeedProject() {
+  const project = createConnectorSeedProject();
+  project.board.nodes.splice(1, 0, {
+    id: 'node_rect_obstacle',
+    type: 'rect',
+    x: 210,
+    y: 20,
+    w: 80,
+    h: 170,
+    stroke: '#111827',
+    fill: 'rgba(245, 158, 11, 0.18)',
+  });
+  return project;
+}
+
 function createSelectionChromeSeedProject() {
   const project = createSeedProject();
   project.assets.push({
@@ -928,6 +943,41 @@ test('polyline connector mode exposes bend handles, supports reattachment, and r
   expect(connector.pathMode).toBe('polyline');
   expect(connector.waypoints[0]).toEqual({ x: 320, y: 90 });
   expect(connector.end).toEqual({ kind: 'attached', nodeId: 'node_rect_c', anchor: 'west' });
+});
+
+test('polyline connector mode avoids middle obstacles when generating the initial path', async ({ page }) => {
+  await page.addInitScript(([storageKey, project]) => {
+    if (window.sessionStorage.getItem('__seeded_project__') === 'true') {
+      return;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(project));
+    window.sessionStorage.setItem('__seeded_project__', 'true');
+  }, [STORAGE_KEY, createPolylineObstacleSeedProject()]);
+
+  await page.goto('/');
+
+  const canvas = page.locator('canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+
+  if (!box) {
+    return;
+  }
+
+  await page.getByRole('button', { name: '连线' }).click();
+  await page.getByRole('button', { name: '折线' }).click();
+  await page.mouse.move(box.x + 180, box.y + 90);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 320, box.y + 110, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+
+  const project = await page.evaluate(() => JSON.parse(localStorage.getItem('infinite-canvas:v2') ?? '{}'));
+  const connector = project.board.nodes.find((node: { type: string }) => node.type === 'connector');
+  expect(connector).toBeTruthy();
+  expect(connector.pathMode).toBe('polyline');
+  expect(connector.waypoints.length).toBeGreaterThan(1);
+  expect(connector.waypoints.some((point: { x: number; y: number }) => point.y < 4 || point.y > 206)).toBe(true);
 });
 
 test('curve connector mode creates curved connectors, supports undo redo, and restores after reload', async ({ page }) => {

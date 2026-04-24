@@ -4,7 +4,9 @@ import {
   computeDragSnap,
   createCanvasInteractionController,
   createCanvasRenderRuntime,
+  getDefaultConnectorWaypoints,
   getDefaultConnectorCurveControls,
+  getConnectorCurveBendHandle,
   getAllDescendantNodes,
   getCanvasNodeBounds,
   getNodeAdapter,
@@ -47,7 +49,7 @@ function createDraftConnector(
       y: point.y,
     },
     pathMode,
-    waypoints: pathMode === 'polyline' ? [{ x: point.x, y: anchor.point.y }] : [],
+    waypoints: [],
     curveControl: undefined,
     curveStartControl: curveControls?.startControl,
     curveEndControl: curveControls?.endControl,
@@ -2166,6 +2168,139 @@ describe('canvas engine', () => {
     reattachController.dispose();
   });
 
+  it('routes new polyline connectors around middle obstacles by default', () => {
+    const base = createEmptyProject();
+    const project = {
+      ...base,
+      board: {
+        ...base.board,
+        nodes: [
+          {
+            id: 'node_rect_a',
+            type: 'rect' as const,
+            x: 40,
+            y: 40,
+            w: 120,
+            h: 80,
+            stroke: '#000',
+          },
+          {
+            id: 'node_rect_obstacle',
+            type: 'rect' as const,
+            x: 190,
+            y: 30,
+            w: 90,
+            h: 140,
+            stroke: '#000',
+          },
+          {
+            id: 'node_rect_b',
+            type: 'rect' as const,
+            x: 320,
+            y: 60,
+            w: 140,
+            h: 100,
+            stroke: '#000',
+          },
+        ],
+      },
+    };
+
+    const onSelect = vi.fn();
+    const onReplaceProject = vi.fn();
+    const onCommitProject = vi.fn();
+    const onFinalizeMutation = vi.fn();
+
+    const createController = (nextProject: typeof project) =>
+      createCanvasInteractionController({
+        project: nextProject,
+        selectedId: null,
+        getActiveGroupId: () => null,
+        getTool: () => 'connector',
+        isSpacePressed: () => false,
+        getConnectorPathMode: () => 'polyline',
+        createRectNode: (point) => ({
+          id: 'draft_rect',
+          type: 'rect',
+          x: point.x,
+          y: point.y,
+          w: 0,
+          h: 0,
+          stroke: '#000',
+        }),
+        createFreehandNode: (point) => ({
+          id: 'draft_line',
+          type: 'freehand',
+          points: [point],
+          stroke: '#000',
+          width: 2,
+        }),
+        createTextNode: (point) => ({
+          id: 'draft_text',
+          type: 'text',
+          x: point.x,
+          y: point.y,
+          w: 100,
+          h: 50,
+          text: 'text',
+          color: '#000',
+          fontSize: 16,
+          fontFamily: 'sans-serif',
+        }),
+        createConnectorNode: createDraftConnector,
+        getNodeById,
+        upsertNode,
+        insertNodeIntoGroup: (nodes, _groupId, node) => [...nodes, node],
+        onSelect,
+        onReplaceProject,
+        onCommitProject,
+        onFinalizeMutation,
+        render: () => {},
+        requestAnimationFrame: (() => 1) as typeof window.requestAnimationFrame,
+        cancelAnimationFrame: (() => {}) as typeof window.cancelAnimationFrame,
+      });
+
+    const controller = createController(project);
+    controller.handlePointerDown({
+      screenPoint: { x: 160, y: 80 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    controller.handlePointerMove({
+      screenPoint: { x: 320, y: 110 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    controller.handlePointerUp({
+      screenPoint: { x: 320, y: 110 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+
+    const createdProject = onCommitProject.mock.calls[0][0];
+    const polylineConnector = createdProject.board.nodes.find((node: CanvasNode) => node.id === 'draft_connector');
+    expect(polylineConnector.pathMode).toBe('polyline');
+    expect(polylineConnector.waypoints.length).toBeGreaterThan(1);
+    const pathPoints = resolveConnectorPathPoints(polylineConnector, createdProject.board) ?? [];
+    expect(pathPoints.some((point) => point.y < 14 || point.y > 186)).toBe(true);
+
+    controller.dispose();
+  });
+
+  it('falls back to the baseline polyline bend when no obstacle routing context is provided', () => {
+    expect(
+      getDefaultConnectorWaypoints(
+        { x: 160, y: 80 },
+        { x: 320, y: 110 },
+        'east',
+        'west',
+      ),
+    ).toEqual([{ x: 320, y: 80 }]);
+  });
+
   it('creates curve connectors and updates the curve control handle through the controller', () => {
     const base = createEmptyProject();
     const project = {
@@ -2317,6 +2452,153 @@ describe('canvas engine', () => {
     editController.dispose();
   });
 
+  it('updates both bezier controls when dragging the curve bend handle', () => {
+    const project = {
+      version: 2 as const,
+      board: {
+        version: 2 as const,
+        viewport: { tx: 0, ty: 0, scale: 1 },
+        nodes: [
+          {
+            id: 'node_rect_a',
+            type: 'rect' as const,
+            x: 40,
+            y: 40,
+            w: 120,
+            h: 80,
+            stroke: '#000',
+          },
+          {
+            id: 'node_rect_b',
+            type: 'rect' as const,
+            x: 300,
+            y: 60,
+            w: 140,
+            h: 100,
+            stroke: '#000',
+          },
+        ],
+      },
+      assets: [],
+    };
+
+    const onSelect = vi.fn();
+    const onReplaceProject = vi.fn();
+    const onCommitProject = vi.fn();
+    const onFinalizeMutation = vi.fn();
+
+    const createController = (nextProject: typeof project, selectedId: string | null, tool: 'select' | 'connector') =>
+      createCanvasInteractionController({
+        project: nextProject,
+        selectedId,
+        getActiveGroupId: () => null,
+        getTool: () => tool,
+        isSpacePressed: () => false,
+        getConnectorPathMode: () => 'curve',
+        createRectNode: (point) => ({
+          id: 'draft_rect',
+          type: 'rect',
+          x: point.x,
+          y: point.y,
+          w: 0,
+          h: 0,
+          stroke: '#000',
+        }),
+        createFreehandNode: (point) => ({
+          id: 'draft_line',
+          type: 'freehand',
+          points: [point],
+          stroke: '#000',
+          width: 2,
+        }),
+        createTextNode: (point) => ({
+          id: 'draft_text',
+          type: 'text',
+          x: point.x,
+          y: point.y,
+          w: 100,
+          h: 50,
+          text: 'text',
+          color: '#000',
+          fontSize: 16,
+          fontFamily: 'sans-serif',
+        }),
+        createConnectorNode: createDraftConnector,
+        getNodeById,
+        upsertNode,
+        insertNodeIntoGroup: (nodes, _groupId, node) => [...nodes, node],
+        onSelect,
+        onReplaceProject,
+        onCommitProject,
+        onFinalizeMutation,
+        render: () => {},
+        requestAnimationFrame: (() => 1) as typeof window.requestAnimationFrame,
+        cancelAnimationFrame: (() => {}) as typeof window.cancelAnimationFrame,
+      });
+
+    const controller = createController(project, null, 'connector');
+    controller.handlePointerDown({
+      screenPoint: { x: 160, y: 80 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    controller.handlePointerMove({
+      screenPoint: { x: 300, y: 110 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    controller.handlePointerUp({
+      screenPoint: { x: 300, y: 110 },
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+    });
+
+    const createdProject = onCommitProject.mock.calls[0][0];
+    const curvedConnector = createdProject.board.nodes.find((node: CanvasNode) => node.id === 'draft_connector');
+    const bendHandle = getConnectorCurveBendHandle(curvedConnector, createdProject.board);
+    expect(bendHandle).toBeTruthy();
+
+    const originalStartControl = curvedConnector.curveStartControl as { x: number; y: number };
+    const originalEndControl = curvedConnector.curveEndControl as { x: number; y: number };
+    const editController = createController(createdProject, 'draft_connector', 'select');
+
+    editController.handlePointerDown({
+      screenPoint: bendHandle as { x: number; y: number },
+      pointerId: 2,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    editController.handlePointerMove({
+      screenPoint: { x: (bendHandle?.x ?? 0) + 18, y: (bendHandle?.y ?? 0) - 24 },
+      pointerId: 2,
+      pointerType: 'mouse',
+      button: 0,
+    });
+    editController.handlePointerUp({
+      screenPoint: { x: (bendHandle?.x ?? 0) + 18, y: (bendHandle?.y ?? 0) - 24 },
+      pointerId: 2,
+      pointerType: 'mouse',
+      button: 0,
+    });
+
+    const editedProject = onCommitProject.mock.calls[1][0];
+    const editedConnector = editedProject.board.nodes.find((node: CanvasNode) => node.id === 'draft_connector');
+    expect(editedConnector.curveStartControl).toEqual({
+      x: originalStartControl.x + 18,
+      y: originalStartControl.y - 24,
+    });
+    expect(editedConnector.curveEndControl).toEqual({
+      x: originalEndControl.x + 18,
+      y: originalEndControl.y - 24,
+    });
+
+    controller.dispose();
+    editController.dispose();
+  });
+
   it('keeps opposing anchor curves visibly bent at medium distances', () => {
     const connector: CanvasNode = {
       id: 'connector_curve_opposing',
@@ -2422,5 +2704,23 @@ describe('canvas engine', () => {
     const maxBend = Math.min(...yValues);
     expect(maxBend).toBeGreaterThan(50);
     expect(maxBend).toBeLessThan(92);
+  });
+
+  it('uses fuller default curves for opposing anchors than diagonal defaults', () => {
+    const horizontal = getDefaultConnectorCurveControls(
+      { x: 160, y: 80 },
+      { x: 300, y: 110 },
+      'east',
+      'west',
+    );
+    const diagonal = getDefaultConnectorCurveControls(
+      { x: 160, y: 80 },
+      { x: 300, y: 110 },
+      'east',
+      'south',
+    );
+
+    expect(horizontal.startControl.x - 160).toBeGreaterThan(diagonal.startControl.x - 160);
+    expect(Math.abs(horizontal.startControl.y - 80)).toBeGreaterThan(Math.abs(diagonal.startControl.y - 80));
   });
 });

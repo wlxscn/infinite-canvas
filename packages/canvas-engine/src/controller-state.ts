@@ -28,7 +28,8 @@ export interface HoveredAnchor {
 export type ConnectorHandle =
   | { kind: 'endpoint'; endpoint: 'start' | 'end' }
   | { kind: 'waypoint'; index: number }
-  | { kind: 'curve-control'; control: 'start' | 'end' };
+  | { kind: 'curve-control'; control: 'start' | 'end' }
+  | { kind: 'curve-bend' };
 
 export interface SnapGuide {
   axis: 'x' | 'y';

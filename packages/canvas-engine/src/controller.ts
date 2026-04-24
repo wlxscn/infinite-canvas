@@ -3,6 +3,7 @@ import {
   clampScale,
   findAnchorTarget,
   findProximateConnectorNode,
+  getConnectorCurveBendHandle,
   getAllDescendantNodes,
   getConnectorCurveControlHandle,
   getConnectorPathMode,
@@ -172,6 +173,10 @@ function hitConnectorHandle(
   const endCurveControl = getConnectorCurveControlHandle(node, board, 'end');
   if (endCurveControl && Math.hypot(endCurveControl.x - point.x, endCurveControl.y - point.y) <= tolerance) {
     return { kind: 'curve-control', control: 'end' };
+  }
+  const bendHandle = getConnectorCurveBendHandle(node, board);
+  if (bendHandle && Math.hypot(bendHandle.x - point.x, bendHandle.y - point.y) <= tolerance) {
+    return { kind: 'curve-bend' };
   }
   return null;
 }
@@ -546,6 +551,15 @@ export function createCanvasInteractionController<TProject extends CanvasProject
         end,
         node.start.kind === 'attached' ? node.start.anchor : undefined,
         endAnchor,
+        {
+          board,
+          contextNodes: getConnectorContextNodes(board),
+          excludeNodeIds: [
+            node.start.kind === 'attached' ? node.start.nodeId : '',
+            node.end.kind === 'attached' ? node.end.nodeId : '',
+            node.id,
+          ].filter(Boolean),
+        },
       ),
     };
   }
@@ -966,7 +980,11 @@ export function createCanvasInteractionController<TProject extends CanvasProject
       if (
         state.pointerMode === 'editing-connector-waypoint' &&
         state.draftConnector &&
-        (activeConnectorHandle?.kind === 'waypoint' || activeConnectorHandle?.kind === 'curve-control')
+        (
+          activeConnectorHandle?.kind === 'waypoint' ||
+          activeConnectorHandle?.kind === 'curve-control' ||
+          activeConnectorHandle?.kind === 'curve-bend'
+        )
       ) {
         if (activeConnectorHandle.kind === 'curve-control') {
           updateState({
@@ -978,6 +996,36 @@ export function createCanvasInteractionController<TProject extends CanvasProject
                 activeConnectorHandle.control === 'start' ? worldPoint : state.draftConnector.curveStartControl,
               curveEndControl:
                 activeConnectorHandle.control === 'end' ? worldPoint : state.draftConnector.curveEndControl,
+            },
+            proximateConnectorNodeId: null,
+            hoveredAnchor: null,
+          });
+        } else if (activeConnectorHandle.kind === 'curve-bend') {
+          const currentBendHandle = getConnectorCurveBendHandle(state.draftConnector, currentBoard);
+          if (!currentBendHandle) {
+            return;
+          }
+          const delta = {
+            x: worldPoint.x - currentBendHandle.x,
+            y: worldPoint.y - currentBendHandle.y,
+          };
+          updateState({
+            draftConnector: {
+              ...state.draftConnector,
+              pathMode: 'curve',
+              curveControl: undefined,
+              curveStartControl: state.draftConnector.curveStartControl
+                ? {
+                    x: state.draftConnector.curveStartControl.x + delta.x,
+                    y: state.draftConnector.curveStartControl.y + delta.y,
+                  }
+                : undefined,
+              curveEndControl: state.draftConnector.curveEndControl
+                ? {
+                    x: state.draftConnector.curveEndControl.x + delta.x,
+                    y: state.draftConnector.curveEndControl.y + delta.y,
+                  }
+                : undefined,
             },
             proximateConnectorNodeId: null,
             hoveredAnchor: null,
@@ -1180,7 +1228,11 @@ export function createCanvasInteractionController<TProject extends CanvasProject
         state.pointerMode === 'editing-connector-waypoint' &&
         state.draftConnector &&
         activeNodeId &&
-        (activeConnectorHandle?.kind === 'waypoint' || activeConnectorHandle?.kind === 'curve-control')
+        (
+          activeConnectorHandle?.kind === 'waypoint' ||
+          activeConnectorHandle?.kind === 'curve-control' ||
+          activeConnectorHandle?.kind === 'curve-bend'
+        )
       ) {
         const nextProject = updateBoard({
           ...currentBoard,

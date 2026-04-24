@@ -1,4 +1,4 @@
-import { getBoxCenter, getBoxRotation, rotatePoint } from './geometry';
+import { getBoxCenter, getBoxRotation, getRotatedBoxBounds, normalizeBounds, rotatePoint, type Bounds } from './geometry';
 import { getAllDescendantNodes, getNodeById, isGroupNode, resolveNodeToWorld } from './hierarchy';
 import type {
   AnchorId,
@@ -53,11 +53,61 @@ export function getDefaultConnectorCurveControl(start: Point, end: Point, startA
     startAnchor === 'north' || startAnchor === 'east'
       ? -1
       : 1;
-  const offset = Math.min(Math.max(length * 0.18, 32), 72) * direction;
+  const offset = Math.min(Math.max(length * 0.24, 42), 96) * direction;
 
   return {
     x: midpoint.x + normal.x * offset,
     y: midpoint.y + normal.y * offset,
+  };
+}
+
+function getDefaultCurveProfile(startAnchor?: AnchorId, endAnchor?: AnchorId): {
+  bendScale: number;
+  bendMin: number;
+  bendMax: number;
+  handleScale: number;
+  handleMin: number;
+  handleMax: number;
+  bendWeight: number;
+} {
+  if (
+    (startAnchor === 'east' && endAnchor === 'west') ||
+    (startAnchor === 'west' && endAnchor === 'east')
+  ) {
+    return {
+      bendScale: 0.28,
+      bendMin: 48,
+      bendMax: 108,
+      handleScale: 0.38,
+      handleMin: 64,
+      handleMax: 208,
+      bendWeight: 1.24,
+    };
+  }
+
+  if (
+    (startAnchor === 'north' && endAnchor === 'south') ||
+    (startAnchor === 'south' && endAnchor === 'north')
+  ) {
+    return {
+      bendScale: 0.26,
+      bendMin: 44,
+      bendMax: 102,
+      handleScale: 0.36,
+      handleMin: 60,
+      handleMax: 198,
+      bendWeight: 1.2,
+    };
+  }
+
+  return {
+    bendScale: 0.22,
+    bendMin: 38,
+    bendMax: 88,
+    handleScale: 0.32,
+    handleMin: 54,
+    handleMax: 178,
+    bendWeight: 1.12,
   };
 }
 
@@ -68,27 +118,40 @@ export function getDefaultConnectorCurveControls(
   endAnchor?: AnchorId,
 ): { startControl: Point; endControl: Point } {
   const distance = Math.hypot(end.x - start.x, end.y - start.y) || 1;
-  const defaultBend = getDefaultConnectorCurveControl(start, end, startAnchor);
+  const profile = getDefaultCurveProfile(startAnchor, endAnchor);
   const midpoint = {
     x: (start.x + end.x) / 2,
     y: (start.y + end.y) / 2,
+  };
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const normal = { x: -dy / length, y: dx / length };
+  const defaultDirection =
+    startAnchor === 'north' || startAnchor === 'east'
+      ? -1
+      : 1;
+  const bendMagnitude = Math.min(Math.max(distance * profile.bendScale, profile.bendMin), profile.bendMax);
+  const defaultBend = {
+    x: midpoint.x + normal.x * bendMagnitude * defaultDirection,
+    y: midpoint.y + normal.y * bendMagnitude * defaultDirection,
   };
   const bendOffset = {
     x: defaultBend.x - midpoint.x,
     y: defaultBend.y - midpoint.y,
   };
-  const handleLength = Math.min(Math.max(distance * 0.24, 40), 148);
+  const handleLength = Math.min(Math.max(distance * profile.handleScale, profile.handleMin), profile.handleMax);
   const startDirection = startAnchor ? getAnchorDirection(startAnchor) : normalizeDirection({ x: end.x - start.x, y: end.y - start.y });
   const endDirection = endAnchor ? getAnchorDirection(endAnchor) : normalizeDirection({ x: start.x - end.x, y: start.y - end.y });
 
   return {
     startControl: {
-      x: start.x + startDirection.x * handleLength + bendOffset.x,
-      y: start.y + startDirection.y * handleLength + bendOffset.y,
+      x: start.x + startDirection.x * handleLength + bendOffset.x * profile.bendWeight,
+      y: start.y + startDirection.y * handleLength + bendOffset.y * profile.bendWeight,
     },
     endControl: {
-      x: end.x + endDirection.x * handleLength + bendOffset.x,
-      y: end.y + endDirection.y * handleLength + bendOffset.y,
+      x: end.x + endDirection.x * handleLength + bendOffset.x * profile.bendWeight,
+      y: end.y + endDirection.y * handleLength + bendOffset.y * profile.bendWeight,
     },
   };
 }
@@ -217,23 +280,38 @@ export function getConnectorCurveControlHandle(
   return control === 'start' ? controls.startControl : controls.endControl;
 }
 
+function getCubicPoint(start: Point, control1: Point, control2: Point, end: Point, t: number): Point {
+  const mt = 1 - t;
+
+  return {
+    x:
+      mt * mt * mt * start.x +
+      3 * mt * mt * t * control1.x +
+      3 * mt * t * t * control2.x +
+      t * t * t * end.x,
+    y:
+      mt * mt * mt * start.y +
+      3 * mt * mt * t * control1.y +
+      3 * mt * t * t * control2.y +
+      t * t * t * end.y,
+  };
+}
+
+export function getConnectorCurveBendHandle(node: ConnectorNode, board: BoardDoc): Point | null {
+  const points = resolveConnectorPoints(node, board);
+  const controls = resolveConnectorCurveBezierControls(node, board);
+  if (!points || !controls) {
+    return null;
+  }
+
+  return getCubicPoint(points.start, controls.control1, controls.control2, points.end, 0.5);
+}
+
 function sampleCubicCurve(start: Point, control1: Point, control2: Point, end: Point, segments = 24): Point[] {
   const points: Point[] = [];
   for (let index = 0; index <= segments; index += 1) {
     const t = index / segments;
-    const mt = 1 - t;
-    points.push({
-      x:
-        mt * mt * mt * start.x +
-        3 * mt * mt * t * control1.x +
-        3 * mt * t * t * control2.x +
-        t * t * t * end.x,
-      y:
-        mt * mt * mt * start.y +
-        3 * mt * mt * t * control1.y +
-        3 * mt * t * t * control2.y +
-        t * t * t * end.y,
-    });
+    points.push(getCubicPoint(start, control1, control2, end, t));
   }
   return points;
 }
@@ -449,17 +527,168 @@ export function resolveConnectorPathPoints(node: ConnectorNode, board: BoardDoc)
   return [points.start, ...getConnectorWaypointHandles(node), points.end];
 }
 
+interface ConnectorWaypointOptions {
+  board?: BoardDoc;
+  contextNodes?: CanvasNode[];
+  excludeNodeIds?: string[];
+}
+
+function expandBounds(bounds: Bounds, padding: number): Bounds {
+  const normalized = normalizeBounds(bounds);
+  return {
+    x: normalized.x - padding,
+    y: normalized.y - padding,
+    w: normalized.w + padding * 2,
+    h: normalized.h + padding * 2,
+  };
+}
+
+function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
+  const minA = Math.min(aStart, aEnd);
+  const maxA = Math.max(aStart, aEnd);
+  const minB = Math.min(bStart, bEnd);
+  const maxB = Math.max(bStart, bEnd);
+  return maxA >= minB && maxB >= minA;
+}
+
+function segmentIntersectsBounds(a: Point, b: Point, bounds: Bounds): boolean {
+  if (a.x === b.x) {
+    return a.x >= bounds.x && a.x <= bounds.x + bounds.w && rangesOverlap(a.y, b.y, bounds.y, bounds.y + bounds.h);
+  }
+
+  if (a.y === b.y) {
+    return a.y >= bounds.y && a.y <= bounds.y + bounds.h && rangesOverlap(a.x, b.x, bounds.x, bounds.x + bounds.w);
+  }
+
+  return false;
+}
+
+function pathIntersectsObstacles(points: Point[], obstacles: Bounds[]): boolean {
+  for (let index = 0; index < points.length - 1; index += 1) {
+    for (const obstacle of obstacles) {
+      if (segmentIntersectsBounds(points[index], points[index + 1], obstacle)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function compressOrthogonalPoints(points: Point[]): Point[] {
+  const deduped: Point[] = [];
+  for (const point of points) {
+    const previous = deduped[deduped.length - 1];
+    if (!previous || previous.x !== point.x || previous.y !== point.y) {
+      deduped.push(point);
+    }
+  }
+
+  const compressed: Point[] = [];
+  for (const point of deduped) {
+    const prev = compressed[compressed.length - 1];
+    const prevPrev = compressed[compressed.length - 2];
+    if (
+      prev &&
+      prevPrev &&
+      ((prevPrev.x === prev.x && prev.x === point.x) || (prevPrev.y === prev.y && prev.y === point.y))
+    ) {
+      compressed[compressed.length - 1] = point;
+      continue;
+    }
+    compressed.push(point);
+  }
+
+  return compressed;
+}
+
+function scoreWaypointRoute(points: Point[]): number {
+  let length = 0;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    length += Math.abs(points[index + 1].x - points[index].x) + Math.abs(points[index + 1].y - points[index].y);
+  }
+
+  return points.length * 10000 + length;
+}
+
+function resolvePolylineObstacleBounds(options: ConnectorWaypointOptions): Bounds[] {
+  if (!options.board) {
+    return [];
+  }
+
+  const nodes = options.contextNodes ?? options.board.nodes;
+  const allNodes = getAllDescendantNodes(nodes);
+  const excludedIds = new Set(options.excludeNodeIds ?? []);
+
+  return allNodes
+    .filter((node) => isBoxNode(node) && !isGroupNode(node) && !excludedIds.has(node.id))
+    .map((node) => expandBounds(getRotatedBoxBounds(resolveNodeToWorld(node, options.board)), 16));
+}
+
+function resolvePolylineCandidateRoutes(
+  start: Point,
+  end: Point,
+  obstacles: Bounds[],
+): Point[][] {
+  const candidates: Point[][] = [
+    [{ x: end.x, y: start.y }],
+    [{ x: start.x, y: end.y }],
+  ];
+
+  const laneXs = new Set<number>([start.x, end.x]);
+  const laneYs = new Set<number>([start.y, end.y]);
+  for (const obstacle of obstacles) {
+    laneXs.add(obstacle.x - 16);
+    laneXs.add(obstacle.x + obstacle.w + 16);
+    laneYs.add(obstacle.y - 16);
+    laneYs.add(obstacle.y + obstacle.h + 16);
+  }
+
+  for (const laneX of laneXs) {
+    candidates.push([
+      { x: laneX, y: start.y },
+      { x: laneX, y: end.y },
+    ]);
+  }
+
+  for (const laneY of laneYs) {
+    candidates.push([
+      { x: start.x, y: laneY },
+      { x: end.x, y: laneY },
+    ]);
+  }
+
+  return candidates;
+}
+
 export function getDefaultConnectorWaypoints(
   start: Point,
   end: Point,
   startAnchor?: AnchorId,
   _endAnchor?: AnchorId,
+  options: ConnectorWaypointOptions = {},
 ): Point[] {
-  if (startAnchor === 'north' || startAnchor === 'south') {
-    return [{ x: start.x, y: end.y }];
+  const fallback =
+    startAnchor === 'north' || startAnchor === 'south'
+      ? [{ x: start.x, y: end.y }]
+      : [{ x: end.x, y: start.y }];
+
+  const obstacles = resolvePolylineObstacleBounds(options);
+  if (obstacles.length === 0) {
+    return fallback;
   }
 
-  return [{ x: end.x, y: start.y }];
+  const candidates = resolvePolylineCandidateRoutes(start, end, obstacles)
+    .map((waypoints) => compressOrthogonalPoints([start, ...waypoints, end]))
+    .filter((points) => !pathIntersectsObstacles(points, obstacles))
+    .sort((a, b) => scoreWaypointRoute(a) - scoreWaypointRoute(b));
+
+  const bestRoute = candidates[0];
+  if (!bestRoute) {
+    return fallback;
+  }
+
+  return bestRoute.slice(1, -1);
 }
 
 export function isConnectorAttachedToNode(node: ConnectorNode, nodeId: string): boolean {

@@ -316,6 +316,14 @@ body {
   box-shadow: 0 0 0 2px rgba(255, 237, 213, 0.7);
 }
 
+.canvas-connector-handle-bend {
+  width: 12px;
+  height: 12px;
+  background: rgba(56, 189, 248, 0.95);
+  border-color: rgba(239, 246, 255, 0.92);
+  box-shadow: 0 0 0 2px rgba(224, 242, 254, 0.7);
+}
+
 .canvas-connector-handle-guide {
   position: absolute;
   height: 1px;
