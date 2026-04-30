@@ -50,7 +50,6 @@ export function useWorkspaceViewModel(state: CanvasStoreState, selectedNodes: Ca
     selectedAsset,
     statsText,
     selectionToolbarStyle,
-    hasCanvasContent: getAllDescendantNodes(state.project.board.nodes).length > 0 || state.project.assets.length > 0,
     latestJob: state.project.jobs[0] ?? null,
   };
 }

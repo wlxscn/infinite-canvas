@@ -27,10 +27,6 @@ vi.mock('../../src/components/AssetsPanel', () => ({
   AssetsPanel: () => <aside data-testid="assets-panel" />,
 }));
 
-vi.mock('../../src/components/CanvasHero', () => ({
-  CanvasHero: () => <div data-testid="canvas-hero" />,
-}));
-
 vi.mock('../../src/components/FloatingFooter', () => ({
   FloatingFooter: () => <footer data-testid="floating-footer" />,
 }));
@@ -125,7 +121,6 @@ vi.mock('../../src/hooks/useWorkspaceViewModel', () => ({
       assetCount: '0 assets',
     },
     selectionToolbarStyle: null,
-    hasCanvasContent: false,
   }),
 }));
 

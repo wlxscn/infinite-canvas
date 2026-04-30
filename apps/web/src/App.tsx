@@ -1,8 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import type { ProjectSummary } from '@infinite-canvas/shared/api';
 import { CanvasStage } from './canvas/CanvasStage';
 import { AssetsPanel } from './components/AssetsPanel';
-import { CanvasHero } from './components/CanvasHero';
 import { FloatingFooter } from './components/FloatingFooter';
 import { SelectionToolbar } from './components/SelectionToolbar';
 import { SidebarPeekToggle } from './components/SidebarPeekToggle';
@@ -45,8 +52,22 @@ const TOOLS: Array<{ id: Tool; label: string; icon: string }> = [
   { id: 'connector', label: '连线', icon: '↗' },
 ];
 
+const ASSET_SIDEBAR_DEFAULT_WIDTH = 264;
+const ASSET_SIDEBAR_MIN_WIDTH = 220;
+const ASSET_SIDEBAR_MAX_WIDTH = 420;
+const AGENT_SIDEBAR_DEFAULT_WIDTH = 380;
+const AGENT_SIDEBAR_MIN_WIDTH = 320;
+const AGENT_SIDEBAR_MAX_WIDTH = 560;
+const SIDEBAR_RESIZE_STEP = 16;
+
+type SidebarResizeSide = 'assets' | 'agent';
+
 function getSelectedNode(state: CanvasStoreState) {
   return getNodeById(state.project.board.nodes, state.selectedId);
+}
+
+function clampSidebarWidth(width: number, min: number, max: number): number {
+  return Math.min(Math.max(width, min), max);
 }
 
 function App() {
@@ -60,11 +81,15 @@ function App() {
   const [isRemoteProjectLoadSettled, setIsRemoteProjectLoadSettled] = useState(false);
   const [isAssetSidebarOpen, setIsAssetSidebarOpen] = useState(false);
   const [isAgentSidebarOpen, setIsAgentSidebarOpen] = useState(false);
+  const [assetSidebarWidth, setAssetSidebarWidth] = useState(ASSET_SIDEBAR_DEFAULT_WIDTH);
+  const [agentSidebarWidth, setAgentSidebarWidth] = useState(AGENT_SIDEBAR_DEFAULT_WIDTH);
+  const [activeSidebarResize, setActiveSidebarResize] = useState<SidebarResizeSide | null>(null);
   const [isCanvasInteractionActive, setIsCanvasInteractionActive] = useState(false);
   const [connectorPathMode, setConnectorPathMode] = useState<ConnectorPathMode>('straight');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const chatThreadRef = useRef<HTMLDivElement | null>(null);
   const canvasStageWrapRef = useRef<HTMLDivElement | null>(null);
+  const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
   const latestProjectSummariesRef = useRef(projectSummaries);
 
   usePreventBrowserZoom();
@@ -112,7 +137,7 @@ function App() {
     [state.project.board.nodes, state.selectedIds],
   );
   const isSelectedGroup = selectedNode?.type === 'group';
-  const { statsText, selectionToolbarStyle, hasCanvasContent } = useWorkspaceViewModel(
+  const { statsText, selectionToolbarStyle } = useWorkspaceViewModel(
     state,
     selectedNodes,
     selectedNode,
@@ -258,6 +283,90 @@ function App() {
     chatThreadRef.current.scrollTop = chatThreadRef.current.scrollHeight;
   }, [state.project.chat.activeSessionId, state.project.chat.sessions, streamingAssistantMessage?.text]);
 
+  useEffect(() => {
+    if (!activeSidebarResize) {
+      return;
+    }
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    function handlePointerMove(event: PointerEvent): void {
+      const workspaceRect = workspaceBodyRef.current?.getBoundingClientRect();
+      if (!workspaceRect) {
+        return;
+      }
+
+      if (activeSidebarResize === 'assets') {
+        setAssetSidebarWidth(
+          clampSidebarWidth(event.clientX - workspaceRect.left, ASSET_SIDEBAR_MIN_WIDTH, ASSET_SIDEBAR_MAX_WIDTH),
+        );
+        return;
+      }
+
+      setAgentSidebarWidth(
+        clampSidebarWidth(workspaceRect.right - event.clientX, AGENT_SIDEBAR_MIN_WIDTH, AGENT_SIDEBAR_MAX_WIDTH),
+      );
+    }
+
+    function handlePointerUp(): void {
+      setActiveSidebarResize(null);
+    }
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+  }, [activeSidebarResize]);
+
+  const workspaceBodyStyle = {
+    '--asset-sidebar-width': `${assetSidebarWidth}px`,
+    '--agent-sidebar-width': `${agentSidebarWidth}px`,
+  } as CSSProperties;
+
+  function handleSidebarResizeKeyDown(side: SidebarResizeSide, event: ReactKeyboardEvent<HTMLButtonElement>): void {
+    const direction = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+    if (direction === 0) {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (side === 'assets') {
+      setAssetSidebarWidth((current) =>
+        clampSidebarWidth(
+          current + direction * SIDEBAR_RESIZE_STEP,
+          ASSET_SIDEBAR_MIN_WIDTH,
+          ASSET_SIDEBAR_MAX_WIDTH,
+        ),
+      );
+      return;
+    }
+
+    setAgentSidebarWidth((current) =>
+      clampSidebarWidth(
+        current - direction * SIDEBAR_RESIZE_STEP,
+        AGENT_SIDEBAR_MIN_WIDTH,
+        AGENT_SIDEBAR_MAX_WIDTH,
+      ),
+    );
+  }
+
+  function handleSidebarResizePointerDown(side: SidebarResizeSide, event: ReactPointerEvent<HTMLButtonElement>): void {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setActiveSidebarResize(side);
+  }
+
   async function handleCreateProject(): Promise<void> {
     try {
       const created = await createRemoteProject(DEFAULT_PROJECT_TITLE);
@@ -328,9 +437,11 @@ function App() {
         />
 
         <div
+          ref={workspaceBodyRef}
           className={`workspace-body${isAgentSidebarOpen ? '' : ' workspace-body-agent-collapsed'}${
             isAssetSidebarOpen ? '' : ' workspace-body-assets-collapsed'
           }`}
+          style={workspaceBodyStyle}
         >
           <AssetsPanel
             assets={state.project.assets}
@@ -343,9 +454,24 @@ function App() {
             onInsertAsset={insertAsset}
           />
 
-          <main className="canvas-workspace">
-            {!hasCanvasContent ? <CanvasHero /> : null}
+          {isAssetSidebarOpen ? (
+            <button
+              type="button"
+              className={`sidebar-resize-handle sidebar-resize-handle-assets${
+                activeSidebarResize === 'assets' ? ' sidebar-resize-handle-active' : ''
+              }`}
+              aria-label="调整素材栏宽度"
+              aria-orientation="vertical"
+              aria-valuemin={ASSET_SIDEBAR_MIN_WIDTH}
+              aria-valuemax={ASSET_SIDEBAR_MAX_WIDTH}
+              aria-valuenow={assetSidebarWidth}
+              role="separator"
+              onPointerDown={(event) => handleSidebarResizePointerDown('assets', event)}
+              onKeyDown={(event) => handleSidebarResizeKeyDown('assets', event)}
+            />
+          ) : null}
 
+          <main className="canvas-workspace">
             {selectedNodes.length > 0 && selectionToolbarStyle && !isCanvasInteractionActive ? (
               <SelectionToolbar
                 selectedNode={selectedNode}
@@ -412,30 +538,46 @@ function App() {
           </main>
 
           {isAgentSidebarOpen ? (
-            <AgentSidebar
-              isOpen={isAgentSidebarOpen}
-              sessionCount={sessionCount}
-              sessions={state.project.chat.sessions}
-              sessionHistory={sessionHistory}
-              activeSessionId={state.project.chat.activeSessionId}
-              activeSession={activeSession}
-              currentTask={currentTask}
-              streamingAssistantMessage={streamingAssistantMessage}
-              streamingEffects={streamingEffects}
-              chatInput={chatInput}
-              composerStatusText={composerStatusText}
-              voiceButtonLabel={voiceButtonLabel}
-              voiceComposer={voiceComposer}
-              chatThreadRef={chatThreadRef}
-              onCreateSession={() => createAndActivateSession()}
-              onActivateSession={activateSession}
-              onClose={() => setIsAgentSidebarOpen(false)}
-              onChatInputChange={setChatInput}
-              onSubmitChat={() => {
-                void submitChatMessage(chatInput);
-              }}
-              onSuggestion={handleSuggestion}
-            />
+            <>
+              <button
+                type="button"
+                className={`sidebar-resize-handle sidebar-resize-handle-agent${
+                  activeSidebarResize === 'agent' ? ' sidebar-resize-handle-active' : ''
+                }`}
+                aria-label="调整对话栏宽度"
+                aria-orientation="vertical"
+                aria-valuemin={AGENT_SIDEBAR_MIN_WIDTH}
+                aria-valuemax={AGENT_SIDEBAR_MAX_WIDTH}
+                aria-valuenow={agentSidebarWidth}
+                role="separator"
+                onPointerDown={(event) => handleSidebarResizePointerDown('agent', event)}
+                onKeyDown={(event) => handleSidebarResizeKeyDown('agent', event)}
+              />
+              <AgentSidebar
+                isOpen={isAgentSidebarOpen}
+                sessionCount={sessionCount}
+                sessions={state.project.chat.sessions}
+                sessionHistory={sessionHistory}
+                activeSessionId={state.project.chat.activeSessionId}
+                activeSession={activeSession}
+                currentTask={currentTask}
+                streamingAssistantMessage={streamingAssistantMessage}
+                streamingEffects={streamingEffects}
+                chatInput={chatInput}
+                composerStatusText={composerStatusText}
+                voiceButtonLabel={voiceButtonLabel}
+                voiceComposer={voiceComposer}
+                chatThreadRef={chatThreadRef}
+                onCreateSession={() => createAndActivateSession()}
+                onActivateSession={activateSession}
+                onClose={() => setIsAgentSidebarOpen(false)}
+                onChatInputChange={setChatInput}
+                onSubmitChat={() => {
+                  void submitChatMessage(chatInput);
+                }}
+                onSuggestion={handleSuggestion}
+              />
+            </>
           ) : (
             <div className="agent-sidebar-slot" aria-hidden="true" />
           )}

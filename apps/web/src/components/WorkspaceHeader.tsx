@@ -84,7 +84,7 @@ export function WorkspaceHeader({
           <strong>{projectTitle}</strong>
           <span>管理多张画布，并在右侧持续迭代</span>
         </div>
-        <button className="ghost-btn" type="button" onClick={onCreateProject}>
+        <button className="ghost-btn create-project-btn" type="button" onClick={onCreateProject}>
           新建画布
         </button>
         <div className="project-switcher" ref={projectSwitcherRef}>
