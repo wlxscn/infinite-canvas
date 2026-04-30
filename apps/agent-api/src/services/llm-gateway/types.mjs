@@ -26,6 +26,7 @@ export const LLM_TOOL_CHOICE = {
 export const LLM_PROVIDERS = {
   OPENAI: 'openai',
   MINIMAX: 'minimax',
+  VERCEL: 'vercel',
   ANTHROPIC: 'anthropic',
   GEMINI: 'gemini',
   GLM: 'glm',

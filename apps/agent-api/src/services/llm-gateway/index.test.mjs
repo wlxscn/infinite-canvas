@@ -8,6 +8,10 @@ function createEnv() {
     llmDefaultStreamProvider: 'minimax',
     llmDefaultToolProvider: 'minimax',
     llmDefaultTranscriptionProvider: 'openai',
+    vercelAiGatewayApiKey: 'gateway-key',
+    vercelAiGatewayToken: '',
+    vercelAiGatewayBaseUrl: 'https://ai-gateway.invalid/v1',
+    vercelAiGatewayModel: 'openai/gpt-5.4',
   };
 }
 
@@ -102,4 +106,49 @@ test('llm gateway fails fast for unsupported capability', async () => {
       return true;
     },
   );
+});
+
+test('llm gateway routes to vercel provider defaults from registry', async () => {
+  let capturedRequest = null;
+  const gateway = createLlmGateway({
+    env: {
+      ...createEnv(),
+      llmDefaultTextProvider: 'vercel',
+      llmDefaultStreamProvider: 'vercel',
+      llmDefaultToolProvider: 'vercel',
+    },
+    fetchImpl: async (url, init) => {
+      capturedRequest = {
+        url,
+        headers: init.headers,
+        body: JSON.parse(init.body),
+      };
+
+      return Response.json({
+        id: 'chatcmpl_1',
+        choices: [
+          {
+            finish_reason: 'stop',
+            message: {
+              content: 'hello',
+            },
+          },
+        ],
+      });
+    },
+  });
+
+  const capabilities = gateway.getProviderCapabilities();
+  assert.equal(capabilities.vercel.capabilities.complete, true);
+  assert.equal(capabilities.vercel.capabilities.stream, true);
+  assert.equal(capabilities.vercel.capabilities.callTools, true);
+  assert.equal(capabilities.vercel.capabilities.transcribe, false);
+
+  const result = await gateway.complete({ messages: [{ role: 'user', content: 'hello' }] });
+
+  assert.equal(result.provider, 'vercel');
+  assert.equal(result.model, 'openai/gpt-5.4');
+  assert.equal(capturedRequest.url, 'https://ai-gateway.invalid/v1/chat/completions');
+  assert.equal(capturedRequest.headers.Authorization, 'Bearer gateway-key');
+  assert.equal(capturedRequest.body.model, 'openai/gpt-5.4');
 });

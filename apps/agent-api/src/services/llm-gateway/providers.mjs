@@ -1,6 +1,7 @@
 import { createMiniMaxAdapter } from './adapters/minimax.adapter.mjs';
 import { createOpenAiAdapter } from './adapters/openai.adapter.mjs';
 import { createPlaceholderAdapter } from './adapters/placeholder.adapter.mjs';
+import { createVercelAiGatewayAdapter } from './adapters/vercel-ai-gateway.adapter.mjs';
 import { LLM_CAPABILITIES, LLM_PROVIDERS } from './types.mjs';
 
 export function createProviderRegistry({ env, fetchImpl = globalThis.fetch }) {
@@ -32,6 +33,20 @@ export function createProviderRegistry({ env, fetchImpl = globalThis.fetch }) {
         [LLM_CAPABILITIES.STREAM]: env.openAiModel,
         [LLM_CAPABILITIES.CALL_TOOLS]: env.openAiModel,
         [LLM_CAPABILITIES.TRANSCRIBE]: env.openAiTranscriptionModel,
+      },
+    },
+    [LLM_PROVIDERS.VERCEL]: {
+      adapter: createVercelAiGatewayAdapter({ env, fetchImpl }),
+      capabilities: {
+        [LLM_CAPABILITIES.COMPLETE]: true,
+        [LLM_CAPABILITIES.STREAM]: true,
+        [LLM_CAPABILITIES.CALL_TOOLS]: true,
+        [LLM_CAPABILITIES.TRANSCRIBE]: false,
+      },
+      defaultModels: {
+        [LLM_CAPABILITIES.COMPLETE]: env.vercelAiGatewayModel,
+        [LLM_CAPABILITIES.STREAM]: env.vercelAiGatewayModel,
+        [LLM_CAPABILITIES.CALL_TOOLS]: env.vercelAiGatewayModel,
       },
     },
     [LLM_PROVIDERS.ANTHROPIC]: {
