@@ -19,18 +19,20 @@ import type { AppIconName } from './components/AppIcon';
 import { buildCanvasContext } from './features/chat/buildCanvasContext';
 import { AgentSidebar } from './features/chat/components/AgentSidebar';
 import { useChatSidebarController } from './features/chat/hooks/useChatSidebarController';
-import { loadProject, saveProject } from './persistence/local';
+import { loadProject, removeLocalProject, saveProject } from './persistence/local';
 import {
   createProjectSummary,
   DEFAULT_PROJECT_TITLE,
   loadRecentProjectSummaries,
   mergeProjectSummaries,
   normalizeProjectTitle,
+  removeRecentProjectSummary,
   saveRecentProjectSummaries,
 } from './persistence/project-management';
 import { createProjectId, resolveProjectId, setProjectIdInUrl, storeProjectId } from './persistence/project-id';
 import {
   createRemoteProject,
+  deleteRemoteProject,
   loadRemoteProject,
   loadRemoteProjectSummaries,
   RemoteProjectNotFoundError,
@@ -412,6 +414,27 @@ function App() {
     }
   }
 
+  function handleDeleteProject(deletedProjectId: string): void {
+    updateProjectSummaries((prev) => prev.filter((s) => s.projectId !== deletedProjectId));
+    removeRecentProjectSummary(deletedProjectId);
+    removeLocalProject(deletedProjectId);
+    deleteRemoteProject(deletedProjectId).catch((error) => {
+      console.warn('[web/project-management] remote project deletion failed; local state already cleaned up', {
+        projectId: deletedProjectId,
+        error,
+      });
+    });
+
+    if (deletedProjectId === projectId) {
+      const remaining = latestProjectSummariesRef.current.filter((s) => s.projectId !== deletedProjectId);
+      if (remaining.length > 0) {
+        handleSwitchProject(remaining[0].projectId);
+      } else {
+        void handleCreateProject();
+      }
+    }
+  }
+
   return (
     <div className="app-shell">
       <div className={`canvas-shell${isCanvasInteractionActive ? ' interaction-active' : ''}`}>
@@ -428,6 +451,7 @@ function App() {
             void handleCreateProject();
           }}
           onSwitchProject={handleSwitchProject}
+          onDeleteProject={handleDeleteProject}
           onRenameProject={(title) => {
             void handleRenameProject(title);
           }}

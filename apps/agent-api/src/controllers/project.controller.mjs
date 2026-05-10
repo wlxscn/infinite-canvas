@@ -116,6 +116,16 @@ export function createProjectController({ projectPersistenceService = createProj
       }
     },
 
+    async deleteProject(_request, response, projectId) {
+      try {
+        const result = await projectPersistenceService.deleteProject(projectId);
+        writeJson(response, 200, result);
+      } catch (error) {
+        const { statusCode, body } = getErrorPayload(error);
+        writeJson(response, statusCode, body);
+      }
+    },
+
     async renameProject(request, response, projectId) {
       try {
         const body = await readJsonBody(request);

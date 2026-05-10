@@ -232,6 +232,27 @@ export function createProjectPersistenceService({
       return mapStoredProject(data);
     },
 
+    async deleteProject(projectId) {
+      assertProjectId(projectId);
+
+      const { data, error } = await getClient()
+        .from(tableName)
+        .delete()
+        .eq('id', projectId)
+        .select('id')
+        .maybeSingle();
+
+      if (error) {
+        throw new ProjectPersistenceStorageError('Failed to delete project.', error);
+      }
+
+      if (!data) {
+        throw new ProjectPersistenceNotFoundError(projectId);
+      }
+
+      return { success: true, projectId };
+    },
+
     async renameProject(projectId, title) {
       assertProjectId(projectId);
       assertProjectTitle(title);

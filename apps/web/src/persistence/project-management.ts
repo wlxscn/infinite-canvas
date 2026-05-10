@@ -94,6 +94,12 @@ export function saveRecentProjectSummaries(projects: ProjectSummary[], storage: 
   }
 }
 
+export function removeRecentProjectSummary(projectId: string, storage: Storage = localStorage): ProjectSummary[] {
+  const nextProjects = loadRecentProjectSummaries(storage).filter((p) => p.projectId !== projectId);
+  saveRecentProjectSummaries(nextProjects, storage);
+  return nextProjects;
+}
+
 export function upsertRecentProjectSummary(summary: ProjectSummary, storage: Storage = localStorage): ProjectSummary[] {
   const nextProjects = mergeProjectSummaries(loadRecentProjectSummaries(storage), [summary]);
   saveRecentProjectSummaries(nextProjects, storage);

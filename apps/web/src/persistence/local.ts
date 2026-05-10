@@ -234,6 +234,26 @@ export function loadProject(projectId?: string, options: LoadProjectOptions = {}
   }
 }
 
+export function removeLocalProject(projectId: string): void {
+  try {
+    localStorage.removeItem(getProjectStorageKey(projectId));
+    // Also clear the global current-project slot if it matches.
+    const currentRaw = localStorage.getItem(STORAGE_KEY);
+    if (currentRaw) {
+      try {
+        const parsed = JSON.parse(currentRaw);
+        if (parsed?.projectId === projectId) {
+          localStorage.removeItem(STORAGE_KEY);
+        }
+      } catch {
+        // Ignore parse errors on the global slot during removal.
+      }
+    }
+  } catch {
+    // Ignore security errors.
+  }
+}
+
 export function saveProject(project: CanvasProject, projectId?: string): void {
   try {
     const serializedProject = JSON.stringify(project);
