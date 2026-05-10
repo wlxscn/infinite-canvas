@@ -54,5 +54,10 @@ export async function handleProjectRoute(request, response, projectId) {
     return true;
   }
 
+  if (request.method === 'DELETE') {
+    await projectController.deleteProject(request, response, projectId);
+    return true;
+  }
+
   return false;
 }

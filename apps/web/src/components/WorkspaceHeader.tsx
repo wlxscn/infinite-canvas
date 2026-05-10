@@ -12,6 +12,7 @@ interface WorkspaceHeaderProps {
   canRedo: boolean;
   onCreateProject: () => void;
   onSwitchProject: (projectId: string) => void;
+  onDeleteProject: (projectId: string) => void;
   onRenameProject: (title: string) => void;
   onToggleSidebar: () => void;
   onUndo: () => void;
@@ -30,6 +31,7 @@ export function WorkspaceHeader({
   canRedo,
   onCreateProject,
   onSwitchProject,
+  onDeleteProject,
   onRenameProject,
   onToggleSidebar,
   onUndo,
@@ -103,19 +105,36 @@ export function WorkspaceHeader({
             aria-hidden={!isProjectSwitcherOpen}
           >
             {projects.map((project) => (
-              <button
+              <div
                 key={project.projectId}
                 className={`project-switcher-item${project.projectId === activeProjectId ? ' project-switcher-item-active' : ''}`}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  onSwitchProject(project.projectId);
-                  setIsProjectSwitcherOpen(false);
-                }}
               >
-                <strong>{project.title}</strong>
-                <span>{project.projectId === activeProjectId ? '当前画布' : '切换到此画布'}</span>
-              </button>
+                <button
+                  className="project-switcher-item-main"
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    onSwitchProject(project.projectId);
+                    setIsProjectSwitcherOpen(false);
+                  }}
+                >
+                  <strong>{project.title}</strong>
+                  <span>{project.projectId === activeProjectId ? '当前画布' : '切换到此画布'}</span>
+                </button>
+                <button
+                  className="project-switcher-item-delete"
+                  type="button"
+                  aria-label={`删除画布${project.title}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (window.confirm(`确定删除画布「${project.title}」吗？此操作不可撤销。`)) {
+                      onDeleteProject(project.projectId);
+                    }
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
             ))}
           </div>
         </div>

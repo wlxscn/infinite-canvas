@@ -140,6 +140,29 @@ export async function createRemoteProject(title?: string): Promise<ProjectCreate
   return response.json();
 }
 
+interface ProjectDeleteResponse {
+  success: true;
+}
+
+export async function deleteRemoteProject(projectId: string): Promise<ProjectDeleteResponse> {
+  const response = await fetch(getProjectApiUrl(projectId), {
+    method: 'DELETE',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+
+  if (response.status === 404) {
+    throw new RemoteProjectNotFoundError(projectId);
+  }
+
+  if (!response.ok) {
+    throw new Error(await getResponseError(response));
+  }
+
+  return response.json();
+}
+
 export async function renameRemoteProject(projectId: string, title: string): Promise<ProjectRenameResponse> {
   const request: ProjectRenameRequest = {
     title,

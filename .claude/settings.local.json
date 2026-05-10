@@ -4,7 +4,10 @@
       "Bash(git add *)",
       "Bash(git commit *)",
       "Bash(pnpm dev *)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(node *)",
+      "Bash(npx vitest *)",
+      "Bash(pnpm *)"
     ]
   }
 }

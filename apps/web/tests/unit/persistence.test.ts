@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCanvasRenderRuntime } from '@infinite-canvas/canvas-engine';
-import { createDeferredProjectSaver, getProjectStorageKey, loadProject, saveProject, STORAGE_KEY } from '../../src/persistence/local';
+import { createDeferredProjectSaver, getProjectStorageKey, loadProject, removeLocalProject, saveProject, STORAGE_KEY } from '../../src/persistence/local';
 import {
   createProjectSummary,
   DEFAULT_PROJECT_TITLE,
   loadRecentProjectSummaries,
   RECENT_PROJECTS_STORAGE_KEY,
+  removeRecentProjectSummary,
   upsertRecentProjectSummary,
 } from '../../src/persistence/project-management';
 import {
@@ -18,6 +19,7 @@ import {
 } from '../../src/persistence/project-id';
 import {
   createRemoteProject,
+  deleteRemoteProject,
   loadRemoteProject,
   loadRemoteProjectSummaries,
   RemoteProjectNotFoundError,
@@ -718,5 +720,142 @@ describe('project persistence', () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.method).toBe('PATCH');
     expect(JSON.parse(init.body as string)).toEqual({ title: '重命名后的画布' });
+  });
+
+  describe('deleteRemoteProject', () => {
+    it('sends a DELETE request and returns success', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await deleteRemoteProject('11111111-1111-4111-8111-111111111111');
+
+      expect(result).toEqual({ success: true });
+      expect(fetchMock).toHaveBeenCalledWith(
+        'http://127.0.0.1:8787/projects/11111111-1111-4111-8111-111111111111',
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+    });
+
+    it('maps 404 responses to RemoteProjectNotFoundError', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'not found' }), { status: 404 })),
+      );
+
+      await expect(deleteRemoteProject('11111111-1111-4111-8111-111111111111')).rejects.toBeInstanceOf(
+        RemoteProjectNotFoundError,
+      );
+    });
+
+    it('throws a generic error on server failure', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'server error' }), { status: 500 })),
+      );
+
+      await expect(deleteRemoteProject('11111111-1111-4111-8111-111111111111')).rejects.toThrow('server error');
+    });
+  });
+
+  describe('removeLocalProject', () => {
+    it('removes the scoped localStorage entry for the given project', () => {
+      const projectId = '11111111-1111-4111-8111-111111111111';
+      saveProject(createEmptyProject(), projectId);
+
+      expect(localStorage.getItem(getProjectStorageKey(projectId))).toBeTruthy();
+
+      removeLocalProject(projectId);
+
+      expect(localStorage.getItem(getProjectStorageKey(projectId))).toBeNull();
+    });
+
+    it('does not remove the global project slot (projectId is not embedded in stored data)', () => {
+      const projectId = '11111111-1111-4111-8111-111111111111';
+      saveProject(createEmptyProject(), projectId);
+
+      expect(localStorage.getItem(STORAGE_KEY)).toBeTruthy();
+
+      removeLocalProject(projectId);
+
+      // The scoped key is always removed.
+      expect(localStorage.getItem(getProjectStorageKey(projectId))).toBeNull();
+      // The global slot is kept because the saved project data does not embed projectId.
+      expect(localStorage.getItem(STORAGE_KEY)).toBeTruthy();
+    });
+
+    it('preserves the global project slot when it belongs to a different project', () => {
+      const scopedProjectId = '11111111-1111-4111-8111-111111111111';
+      const globalProjectId = '22222222-2222-4222-8222-222222222222';
+      saveProject(createEmptyProject(), scopedProjectId);
+      saveProject(createEmptyProject(), globalProjectId);
+
+      expect(localStorage.getItem(STORAGE_KEY)).toBeTruthy();
+
+      removeLocalProject(scopedProjectId);
+
+      expect(localStorage.getItem(STORAGE_KEY)).toBeTruthy();
+      expect(localStorage.getItem(getProjectStorageKey(scopedProjectId))).toBeNull();
+    });
+
+    it('does not throw when the project does not exist in storage', () => {
+      expect(() => removeLocalProject('00000000-0000-4000-8000-000000000000')).not.toThrow();
+    });
+  });
+
+  describe('removeRecentProjectSummary', () => {
+    it('removes a project summary from the recent list', () => {
+      const projectId = '11111111-1111-4111-8111-111111111111';
+      upsertRecentProjectSummary(createProjectSummary(projectId, { title: '待删除项目' }));
+
+      expect(loadRecentProjectSummaries()).toHaveLength(1);
+
+      removeRecentProjectSummary(projectId);
+
+      expect(loadRecentProjectSummaries()).toHaveLength(0);
+    });
+
+    it('returns the updated list of remaining summaries', () => {
+      const firstId = '11111111-1111-4111-8111-111111111111';
+      const secondId = '22222222-2222-4222-8222-222222222222';
+      upsertRecentProjectSummary(createProjectSummary(firstId, { title: '第一个' }));
+      upsertRecentProjectSummary(createProjectSummary(secondId, { title: '第二个' }));
+
+      const remaining = removeRecentProjectSummary(firstId);
+
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0].projectId).toBe(secondId);
+    });
+
+    it('does not affect summaries with different project ids', () => {
+      const keepId = '11111111-1111-4111-8111-111111111111';
+      const removeId = '22222222-2222-4222-8222-222222222222';
+      upsertRecentProjectSummary(createProjectSummary(keepId, { title: '保留' }));
+      upsertRecentProjectSummary(createProjectSummary(removeId, { title: '移除' }));
+
+      removeRecentProjectSummary(removeId);
+
+      const summaries = loadRecentProjectSummaries();
+      expect(summaries).toHaveLength(1);
+      expect(summaries[0].projectId).toBe(keepId);
+    });
+
+    it('handles removal of a project id that is not in the list', () => {
+      upsertRecentProjectSummary(
+        createProjectSummary('11111111-1111-4111-8111-111111111111', { title: '唯一' }),
+      );
+
+      expect(() => removeRecentProjectSummary('00000000-0000-4000-8000-000000000000')).not.toThrow();
+      expect(loadRecentProjectSummaries()).toHaveLength(1);
+    });
+
+    it('works with an empty recent list', () => {
+      expect(() => removeRecentProjectSummary('11111111-1111-4111-8111-111111111111')).not.toThrow();
+      expect(loadRecentProjectSummaries()).toHaveLength(0);
+    });
   });
 });

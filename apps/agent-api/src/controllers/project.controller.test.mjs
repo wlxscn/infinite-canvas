@@ -228,3 +228,69 @@ test('project controller maps storage errors to 502', async () => {
   assert.equal(response.statusCode, 502);
   assert.equal(parseBody(response).code, 'PROJECT_STORAGE_FAILED');
 });
+
+test('project controller deletes project successfully', async () => {
+  const controller = createProjectController({
+    projectPersistenceService: {
+      async deleteProject(projectId) {
+        assert.equal(projectId, PROJECT_ID);
+        return { success: true, projectId };
+      },
+    },
+  });
+  const response = createMockResponse();
+
+  await controller.deleteProject({}, response, PROJECT_ID);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(parseBody(response).success, true);
+  assert.equal(parseBody(response).projectId, PROJECT_ID);
+});
+
+test('project controller maps delete not-found to 404', async () => {
+  const controller = createProjectController({
+    projectPersistenceService: {
+      async deleteProject() {
+        throw new ProjectPersistenceNotFoundError(PROJECT_ID);
+      },
+    },
+  });
+  const response = createMockResponse();
+
+  await controller.deleteProject({}, response, PROJECT_ID);
+
+  assert.equal(response.statusCode, 404);
+  assert.equal(parseBody(response).code, 'PROJECT_NOT_FOUND');
+});
+
+test('project controller maps delete bad uuid to 400', async () => {
+  const controller = createProjectController({
+    projectPersistenceService: {
+      async deleteProject() {
+        throw new ProjectPersistenceValidationError('Project id must be a UUID.');
+      },
+    },
+  });
+  const response = createMockResponse();
+
+  await controller.deleteProject({}, response, 'bad-uuid');
+
+  assert.equal(response.statusCode, 400);
+  assert.equal(parseBody(response).code, 'PROJECT_VALIDATION_FAILED');
+});
+
+test('project controller maps delete storage errors to 502', async () => {
+  const controller = createProjectController({
+    projectPersistenceService: {
+      async deleteProject() {
+        throw new ProjectPersistenceStorageError('Failed to delete project.');
+      },
+    },
+  });
+  const response = createMockResponse();
+
+  await controller.deleteProject({}, response, PROJECT_ID);
+
+  assert.equal(response.statusCode, 502);
+  assert.equal(parseBody(response).code, 'PROJECT_STORAGE_FAILED');
+});

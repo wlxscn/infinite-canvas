@@ -649,26 +649,60 @@ body {
 .project-switcher-item {
   width: 100%;
   display: grid;
-  gap: 4px;
-  padding: 10px 12px;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 6px 6px 12px;
   border-radius: 14px;
   border: 1px solid rgba(24, 24, 27, 0.07);
   background: rgba(247, 242, 232, 0.92);
-  text-align: left;
-}
-
-.project-switcher-item strong {
-  font-size: 13px;
-}
-
-.project-switcher-item span {
-  font-size: 11px;
-  color: #716a61;
 }
 
 .project-switcher-item-active {
   border-color: rgba(196, 142, 34, 0.42);
   background: rgba(255, 245, 220, 0.96);
+}
+
+.project-switcher-item-main {
+  display: grid;
+  gap: 4px;
+  padding: 4px 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-switcher-item-main strong {
+  font-size: 13px;
+}
+
+.project-switcher-item-main span {
+  font-size: 11px;
+  color: #716a61;
+}
+
+.project-switcher-item-delete {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(24, 24, 27, 0.08);
+  border-radius: 8px;
+  background: rgba(247, 242, 232, 0.8);
+  color: #9a8c7e;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.project-switcher-item-delete:hover {
+  background: rgba(220, 68, 68, 0.12);
+  color: #c44e4e;
+  border-color: rgba(220, 68, 68, 0.28);
 }
 
 .status-pill,
