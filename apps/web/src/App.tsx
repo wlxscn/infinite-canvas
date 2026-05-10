@@ -15,6 +15,7 @@ import { SelectionToolbar } from './components/SelectionToolbar';
 import { SidebarPeekToggle } from './components/SidebarPeekToggle';
 import { ToolDock } from './components/ToolDock';
 import { WorkspaceHeader } from './components/WorkspaceHeader';
+import type { AppIconName } from './components/AppIcon';
 import { buildCanvasContext } from './features/chat/buildCanvasContext';
 import { AgentSidebar } from './features/chat/components/AgentSidebar';
 import { useChatSidebarController } from './features/chat/hooks/useChatSidebarController';
@@ -43,13 +44,13 @@ import { useWorkspaceViewModel } from './hooks/useWorkspaceViewModel';
 import type { CanvasStoreState, ConnectorPathMode, Tool } from './types/canvas';
 import './index.css';
 
-const TOOLS: Array<{ id: Tool; label: string; icon: string }> = [
-  { id: 'select', label: '选择', icon: '◢' },
-  { id: 'pan', label: '平移', icon: '◎' },
-  { id: 'rect', label: '矩形', icon: '▢' },
-  { id: 'freehand', label: '自由线', icon: '✎' },
-  { id: 'text', label: '文本', icon: 'T' },
-  { id: 'connector', label: '连线', icon: '↗' },
+const TOOLS: Array<{ id: Tool; label: string; icon: AppIconName }> = [
+  { id: 'select', label: '选择', icon: 'select' },
+  { id: 'pan', label: '平移', icon: 'hand' },
+  { id: 'rect', label: '矩形', icon: 'rect' },
+  { id: 'freehand', label: '自由线', icon: 'pen' },
+  { id: 'text', label: '文本', icon: 'text' },
+  { id: 'connector', label: '连线', icon: 'connector' },
 ];
 
 const ASSET_SIDEBAR_DEFAULT_WIDTH = 264;
@@ -525,6 +526,32 @@ function App() {
                 onFinalizeMutation={handleFinalizeMutation}
               />
             </div>
+
+            {state.project.board.nodes.length === 0 ? (
+              <section className="canvas-start-card" aria-label="空白画布启动入口">
+                <div className="canvas-start-visual" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <div>
+                  <p className="section-kicker">Start</p>
+                  <h2>上传图片，或者直接与 AI 聊聊</h2>
+                  <p>从导入参考图、打开设计对话或直接绘制开始，生成结果会进入素材栏再插入画布。</p>
+                </div>
+                <div className="canvas-start-actions">
+                  <button type="button" className="ghost-btn ghost-btn-dark" onClick={() => setIsAgentSidebarOpen(true)}>
+                    打开对话
+                  </button>
+                  <button type="button" className="ghost-btn" onClick={() => setIsAssetSidebarOpen(true)}>
+                    素材栏
+                  </button>
+                  <button type="button" className="ghost-btn" onClick={() => setState((prev) => setTool(prev, 'freehand'))}>
+                    直接绘制
+                  </button>
+                </div>
+              </section>
+            ) : null}
 
             <FloatingFooter assetCountText={statsText.assetCount} scaleText={statsText.scaleText} />
             <ToolDock

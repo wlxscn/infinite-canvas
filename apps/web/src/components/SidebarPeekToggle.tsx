@@ -1,3 +1,5 @@
+import { AppIcon } from './AppIcon';
+
 interface SidebarPeekToggleProps {
   onOpen: () => void;
 }
@@ -13,7 +15,7 @@ export function SidebarPeekToggle({ onOpen }: SidebarPeekToggleProps) {
       aria-controls="agent-sidebar"
     >
       <span className="sidebar-peek-icon" aria-hidden="true">
-        ◐
+        <AppIcon name="chat" />
       </span>
       <span className="sidebar-peek-label" aria-hidden="true">
         Chat

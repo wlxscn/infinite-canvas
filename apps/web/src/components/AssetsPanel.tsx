@@ -1,5 +1,6 @@
 import type { AssetRecord } from '../types/canvas';
 import type { RefObject } from 'react';
+import { AppIcon } from './AppIcon';
 
 interface AssetsPanelProps {
   assets: AssetRecord[];
@@ -75,7 +76,7 @@ export function AssetsPanel({ assets, isOpen, fileInputRef, onToggle, onUpload, 
           aria-controls="asset-sidebar-panel"
         >
           <span className="asset-sidebar-rail-icon" aria-hidden="true">
-            ▧
+            <AppIcon name="asset" />
           </span>
           <span className="asset-sidebar-rail-count" aria-hidden="true">
             {assets.length}
@@ -94,14 +95,15 @@ export function AssetsPanel({ assets, isOpen, fileInputRef, onToggle, onUpload, 
         </div>
         <div className="asset-sidebar-header-actions">
           <span className="status-pill">{assets.length} 项</span>
-          <button className="ghost-btn" type="button" onClick={onToggle} aria-label="收起素材栏">
-            收起
+          <button className="icon-btn" type="button" onClick={onToggle} aria-label="收起素材栏" title="收起素材栏">
+            <AppIcon name="chevronLeft" />
           </button>
         </div>
       </div>
 
       <button className="ghost-btn ghost-btn-dark asset-import-btn" type="button" onClick={() => fileInputRef.current?.click()}>
-        导入参考图
+        <AppIcon name="image" />
+        导入图片
       </button>
 
       <input
@@ -119,7 +121,7 @@ export function AssetsPanel({ assets, isOpen, fileInputRef, onToggle, onUpload, 
         {assets.length === 0 ? (
           <div className="asset-sidebar-empty">
             <strong>还没有素材</strong>
-            <p>在右侧描述你想生成的内容，生成结果和上传素材会先出现在这里，然后再插入到画布中。</p>
+            <p>导入图片，或在对话中生成素材。图片会先进入这里，再插入画布；视频由生成流程单独创建。</p>
           </div>
         ) : null}
 

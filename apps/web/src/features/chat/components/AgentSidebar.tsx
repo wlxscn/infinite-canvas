@@ -9,6 +9,7 @@ import { useTypewriterText } from '../hooks/useTypewriterText';
 import type { VoiceComposerStatus } from '../hooks/useVoiceComposer';
 import type { AgentEffect } from '@infinite-canvas/shared/tool-effects';
 import { dedupeChatSuggestions } from '../mappers/chat-mapper';
+import { AppIcon } from '../../../components/AppIcon';
 
 interface VoiceComposerViewModel {
   status: VoiceComposerStatus;
@@ -220,14 +221,21 @@ export function AgentSidebar({
           <p>{activeSession ? '围绕当前画布继续对话、追问和调整。' : '从这里开启新的设计对话。'}</p>
         </div>
         <div className="agent-sidebar-actions">
-          <button className="ghost-btn" type="button" onClick={() => setIsHistoryExpanded((current) => !current)} aria-expanded={isHistoryExpanded}>
-            {sessionCount} 个会话
+          <button
+            className="icon-btn"
+            type="button"
+            onClick={() => setIsHistoryExpanded((current) => !current)}
+            aria-expanded={isHistoryExpanded}
+            aria-label={`${sessionCount} 个会话`}
+            title={`${sessionCount} 个会话`}
+          >
+            <AppIcon name="history" />
           </button>
-          <button className="ghost-btn" type="button" onClick={onCreateSession}>
-            新对话
+          <button className="icon-btn" type="button" onClick={onCreateSession} aria-label="新对话" title="新对话">
+            <AppIcon name="chat" />
           </button>
-          <button className="ghost-btn" type="button" onClick={onClose} aria-label="收起聊天面板">
-            收起
+          <button className="icon-btn" type="button" onClick={onClose} aria-label="收起聊天面板" title="收起聊天面板">
+            <AppIcon name="chevronRight" />
           </button>
         </div>
       </div>
@@ -370,7 +378,8 @@ export function AgentSidebar({
               aria-pressed={voiceComposer.status === 'recording'}
               disabled={voiceComposer.status === 'transcribing'}
             >
-              {voiceButtonLabel}
+              <AppIcon name="spark" />
+              <span>{voiceButtonLabel}</span>
             </button>
             <button className="ghost-btn ghost-btn-dark" type="submit" disabled={voiceComposer.status !== 'idle' || !chatInput.trim()}>
               发送

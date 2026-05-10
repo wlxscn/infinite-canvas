@@ -1,7 +1,8 @@
 import type { ConnectorPathMode, Tool } from '../types/canvas';
+import { AppIcon, type AppIconName } from './AppIcon';
 
 interface ToolDockProps {
-  tools: Array<{ id: Tool; label: string; icon: string }>;
+  tools: Array<{ id: Tool; label: string; icon: AppIconName }>;
   activeTool: Tool;
   connectorPathMode: ConnectorPathMode;
   onCreateGroup: () => void;
@@ -47,7 +48,7 @@ export function ToolDock({
 
       <nav className="tool-dock" aria-label="Primary tools">
         <button className="dock-btn" onClick={onCreateGroup} type="button" aria-label="新建成组" title="新建成组">
-          <span className="dock-icon">▣</span>
+          <span className="dock-icon"><AppIcon name="frame" /></span>
           <span className="dock-label">成组</span>
         </button>
         {tools.map((item) => (
@@ -59,7 +60,7 @@ export function ToolDock({
             aria-label={item.label}
             title={item.label}
           >
-            <span className="dock-icon">{item.icon}</span>
+            <span className="dock-icon"><AppIcon name={item.icon} /></span>
             <span className="dock-label">{item.label}</span>
           </button>
         ))}
