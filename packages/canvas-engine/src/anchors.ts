@@ -621,7 +621,7 @@ function resolvePolylineObstacleBounds(options: ConnectorWaypointOptions): Bound
   const excludedIds = new Set(options.excludeNodeIds ?? []);
 
   return allNodes
-    .filter((node) => isBoxNode(node) && !isGroupNode(node) && !excludedIds.has(node.id))
+    .filter((node): node is BoxNode => isBoxNode(node) && !isGroupNode(node) && !excludedIds.has(node.id))
     .map((node) => expandBounds(getRotatedBoxBounds(resolveNodeToWorld(node, options.board)), 16));
 }
 
